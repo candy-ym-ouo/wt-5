@@ -10,7 +10,7 @@ import {
   getCurrentWeekNumber,
 } from '../utils/storage';
 import { ACHIEVEMENTS } from '../data/achievements';
-import { gameState } from '../store/gameStore';
+import { gameState, checkAchievements } from '../store/gameStore';
 
 interface LeaderboardProps {
   onClose: () => void;
@@ -59,6 +59,7 @@ export default function Leaderboard(props: LeaderboardProps) {
     saveLeaderboardEntry(entry);
     setLeaderboardVersion(v => v + 1);
     setHasSubmitted(true);
+    setTimeout(() => checkAchievements(), 0);
   };
 
   const formatDate = (timestamp: number): string => {

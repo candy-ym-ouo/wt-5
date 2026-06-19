@@ -23,6 +23,8 @@ import {
   runMigrations,
   isNewPersonalBest,
   getPersonalBest,
+  getWeeklyLeaderboard,
+  getSeasonLeaderboard,
 } from '../utils/storage';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
@@ -85,7 +87,7 @@ export const setDifficulty = (level: DifficultyLevel, mode: DifficultyMode = 'dy
   }));
 };
 
-const checkAchievements = () => {
+export const checkAchievements = () => {
   const state = gameState();
   const unlocked = [...state.unlockedAchievements];
   let newAchievement: string | null = null;
@@ -200,6 +202,34 @@ const checkAchievements = () => {
     newAchievement = 'speed_demon';
   }
 
+  if ((state.state === 'won' || state.state === 'lost') && 
+      state.gameMode === 'classic' && 
+      state.foundBooks.length >= 1 && 
+      !unlocked.includes('season_starter')) {
+    unlocked.push('season_starter');
+    newAchievement = 'season_starter';
+  }
+
+  const weeklyEntries = getWeeklyLeaderboard();
+  const seasonEntries = getSeasonLeaderboard();
+
+  if (weeklyEntries.length > 0 && !unlocked.includes('weekly_champion')) {
+    const topWeeklyScore = weeklyEntries[0].score;
+    if (state.score >= topWeeklyScore && state.score > 0) {
+      unlocked.push('weekly_champion');
+      newAchievement = 'weekly_champion';
+    }
+  }
+
+  if (seasonEntries.length > 0 && !unlocked.includes('season_top3')) {
+    const sortedSeason = [...seasonEntries].sort((a, b) => b.score - a.score);
+    const top3Scores = sortedSeason.slice(0, 3).map(e => e.score);
+    if (state.score > 0 && (sortedSeason.length < 3 || state.score >= top3Scores[top3Scores.length - 1])) {
+      unlocked.push('season_top3');
+      newAchievement = 'season_top3';
+    }
+  }
+
   if (unlocked.length !== state.unlockedAchievements.length) {
     setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
     saveUnlockedAchievements(unlocked);
@@ -222,7 +252,6 @@ const startTimer = () => {
       if (newTime <= 0) {
         if (timerInterval) clearInterval(timerInterval);
         setTimeout(() => {
-          checkAchievements();
           if (gameState().gameMode === 'chapter') {
             saveChapterProgressState();
           }
@@ -233,6 +262,7 @@ const startTimer = () => {
             hintsUsed: gameState().hintsUsed,
             consecutiveCorrect: gameState().consecutiveCorrect,
           });
+          checkAchievements();
         }, 0);
         return { ...prev, timeRemaining: 0, state: 'lost' };
       }
@@ -623,7 +653,6 @@ export const selectBook = (bookId: string): boolean => {
         }));
 
         if (timerInterval) clearInterval(timerInterval);
-        checkAchievements();
         saveChapterProgressState();
         updatePersonalBest({
           score: gameState().score,
@@ -632,6 +661,7 @@ export const selectBook = (bookId: string): boolean => {
           hintsUsed: state.hintsUsed,
           consecutiveCorrect: gameState().consecutiveCorrect,
         });
+        checkAchievements();
 
         if (nextTaskIndex >= tasks.length) {
           setTimeout(completeChapter, 500);
@@ -648,7 +678,6 @@ export const selectBook = (bookId: string): boolean => {
       }));
 
       if (timerInterval) clearInterval(timerInterval);
-      checkAchievements();
       updatePersonalBest({
         score: gameState().score,
         booksFound: gameState().foundBooks.length,
@@ -656,6 +685,7 @@ export const selectBook = (bookId: string): boolean => {
         hintsUsed: gameState().hintsUsed,
         consecutiveCorrect: gameState().consecutiveCorrect,
       });
+      checkAchievements();
     }
     return true;
   } else {
