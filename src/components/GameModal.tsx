@@ -625,7 +625,7 @@ export default function GameModal() {
             {isRushGameMode() && rushInfo() && (
               <div class="rush-progress-summary">
                 <div class="rush-progress-label">
-                  ⚡ 闯关模式 - 第 {rushInfo()!.currentStageIndex + 1} 阶段完成
+                  ⚡ 闯关模式 - 第 {rushInfo()!.completedStagesCount} 阶段完成
                 </div>
                 <div class="rush-stage-rewards">
                   <div class="rush-reward-item">
@@ -656,7 +656,7 @@ export default function GameModal() {
                   />
                 </div>
                 <div class="rush-progress-text">
-                  {rushInfo()!.currentStageIndex + 1} / {rushInfo()!.total} 阶段完成
+                  {rushInfo()!.completedStagesCount} / {rushInfo()!.total} 阶段完成
                   累计阶段奖励: +{rushInfo()!.totalStageBonus} 分
                 </div>
                 {rushInfo()!.completed && rushInfo()!.perfectRun && (

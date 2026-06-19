@@ -3074,6 +3074,8 @@ const completeRushStage = (_bookId: string, findTime: number) => {
   const stageIndex = state.rush.currentStageIndex;
   const wrongPicks = state.currentRoundWrongPicks.length;
   const hintsUsed = state.hintsUsed;
+  const totalStages = state.rush.totalStages;
+  const isLastStage = stageIndex >= totalStages - 1;
 
   const { stageBonus, timeBonus, noHint, noWrong } = calculateRushStageBonus(
     stageIndex,
@@ -3098,7 +3100,7 @@ const completeRushStage = (_bookId: string, findTime: number) => {
         timeBonus,
       };
     }
-    if (index === stageIndex + 1) {
+    if (!isLastStage && index === stageIndex + 1) {
       return {
         ...stage,
         status: 'current' as const,
@@ -3107,16 +3109,35 @@ const completeRushStage = (_bookId: string, findTime: number) => {
     return stage;
   });
 
+  const newNoHintStages = state.rush.noHintStages + (noHint ? 1 : 0);
+  const newNoWrongStages = state.rush.noWrongStages + (noWrong ? 1 : 0);
+
+  let extraBonus = 0;
+  let perfectRun = false;
+  let completed = false;
+
+  if (isLastStage) {
+    completed = true;
+    const rewards = state.rush.stageRewards;
+    extraBonus += rewards.completionBonus;
+    if (newNoHintStages === totalStages && newNoWrongStages === totalStages) {
+      perfectRun = true;
+      extraBonus += rewards.perfectBonus;
+    }
+  }
+
   setGameState(prev => ({
     ...prev,
-    score: prev.score + stageBonus,
+    score: prev.score + stageBonus + extraBonus,
     rush: {
       ...prev.rush,
       stages: newStages,
-      totalStageBonus: prev.rush.totalStageBonus + stageBonus,
+      totalStageBonus: prev.rush.totalStageBonus + stageBonus + extraBonus,
       totalTimeBonus: prev.rush.totalTimeBonus + timeBonus,
-      noHintStages: prev.rush.noHintStages + (noHint ? 1 : 0),
-      noWrongStages: prev.rush.noWrongStages + (noWrong ? 1 : 0),
+      noHintStages: newNoHintStages,
+      noWrongStages: newNoWrongStages,
+      completed,
+      perfectRun,
     },
   }));
 };
@@ -3182,57 +3203,42 @@ const completeRushGame = () => {
   const state = gameState();
   if (state.gameMode !== 'rush') return;
 
-  const rewards = state.rush.stageRewards;
-  let finalScore = state.score + rewards.completionBonus;
-  let perfectRun = false;
-
-  if (state.rush.noHintStages === 3 && state.rush.noWrongStages === 3) {
-    perfectRun = true;
-    finalScore += rewards.perfectBonus;
-  }
-
   setGameState(prev => ({
     ...prev,
-    score: finalScore,
     state: 'won',
-    rush: {
-      ...prev.rush,
-      completed: true,
-      perfectRun,
-      totalStageBonus: prev.rush.totalStageBonus + rewards.completionBonus + (perfectRun ? rewards.perfectBonus : 0),
-    },
   }));
 
   setShowRushCompletePopup(true);
 
   if (timerInterval) clearInterval(timerInterval);
   updatePersonalBest({
-    score: finalScore,
-    booksFound: gameState().foundBooks.length,
+    score: state.score,
+    booksFound: state.foundBooks.length,
     findTime: lastFindTime(),
-    hintsUsed: gameState().hintsUsed,
-    consecutiveCorrect: gameState().consecutiveCorrect,
+    hintsUsed: state.hintsUsed,
+    consecutiveCorrect: state.consecutiveCorrect,
   });
   checkAchievements();
-  checkStreakAchievements(gameState().streak.currentStreak + 1);
+  checkStreakAchievements(state.streak.currentStreak + 1);
 };
 
 export const getRushInfo = () => {
   const state = gameState();
   if (state.gameMode !== 'rush') return null;
 
-  const progress = state.rush.currentStageIndex;
   const total = state.rush.totalStages;
-  const percent = (progress / total) * 100;
+  const completedStagesCount = state.rush.stages.filter(s => s.status === 'completed').length;
+  const percent = (completedStagesCount / total) * 100;
 
   return {
     rush: state.rush,
     stages: state.rush.stages,
     currentStage: state.rush.stages[state.rush.currentStageIndex],
-    progress,
+    progress: completedStagesCount,
     total,
     percent,
     currentStageIndex: state.rush.currentStageIndex,
+    completedStagesCount,
     totalStageBonus: state.rush.totalStageBonus,
     totalTimeBonus: state.rush.totalTimeBonus,
     noHintStages: state.rush.noHintStages,
