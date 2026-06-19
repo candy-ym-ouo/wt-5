@@ -189,27 +189,50 @@ export default function Bookshelf() {
     container: PIXI.Container,
     books: Book[],
     shelfWidth: number,
-    shelfHeight: number
+    shelfHeight: number,
+    layoutAffected: boolean = false
   ) => {
     const totalBookWidth = books.reduce((sum, b) => sum + b.width, 0);
-    const spacing = (shelfWidth - totalBookWidth - 40) / (books.length + 1);
-    let x = 20 + spacing;
+    const baseSpacing = (shelfWidth - totalBookWidth - 40) / (books.length + 1);
+    let x = 20 + baseSpacing;
 
-    books.forEach(book => {
+    const tfInfo = getThemeFilterInfo();
+    const themeBookIds = layoutAffected && tfInfo.displayTheme 
+      ? new Set(tfInfo.displayTheme.bookIds)
+      : new Set<string>();
+
+    books.forEach((book, index) => {
       const bookSprite = createBookSprite(book);
-      bookSprite.x = x;
+      const isThemeBook = themeBookIds.has(book.id);
+      
+      let extraSpacing = 0;
+      if (layoutAffected && themeBookIds.size > 0) {
+        if (index > 0) {
+          const prevIsTheme = themeBookIds.has(books[index - 1].id);
+          if (prevIsTheme !== isThemeBook) {
+            extraSpacing = 25;
+          }
+        }
+      }
+      
+      bookSprite.x = x + extraSpacing;
       bookSprite.y = shelfHeight - 30 - book.height;
       bookSprite.interactive = true;
       bookSprite.buttonMode = true;
 
+      if (layoutAffected && isThemeBook) {
+        bookSprite.scale.y = 1.08;
+        bookSprite.y = shelfHeight - 30 - book.height * 1.08;
+      }
+
       bookSprite.on('pointerover', () => {
         setHoveredBook(book);
-        scaleBook(bookSprite, 1.1, book.height);
+        scaleBook(bookSprite, layoutAffected && isThemeBook ? 1.18 : 1.1, book.height);
       });
 
       bookSprite.on('pointerout', () => {
         setHoveredBook(null);
-        scaleBook(bookSprite, 1, book.height);
+        scaleBook(bookSprite, layoutAffected && isThemeBook ? 1.08 : 1, book.height);
       });
 
       bookSprite.on('click', () => {
@@ -219,7 +242,7 @@ export default function Bookshelf() {
       container.addChild(bookSprite);
       bookSprites.set(book.id, bookSprite);
 
-      x += book.width + spacing;
+      x += book.width + baseSpacing + extraSpacing;
     });
   };
 
@@ -306,6 +329,11 @@ export default function Bookshelf() {
     const shelfHeight = (height - 60) / SHELF_COUNT;
     const shelfY = 30;
 
+    const tfInfo = getThemeFilterInfo();
+    const themeBookIds = tfInfo.layoutAffected && tfInfo.displayTheme 
+      ? new Set(tfInfo.displayTheme.bookIds)
+      : new Set<string>();
+
     for (let i = 0; i < SHELF_COUNT; i++) {
       const shelfContainer = new PIXI.Container();
       shelfContainer.y = shelfY + i * shelfHeight;
@@ -316,8 +344,15 @@ export default function Bookshelf() {
       shelfBoard.y = shelfHeight - 30;
       shelfContainer.addChild(shelfBoard);
 
-      const shelfBooks = BOOKS.filter(b => b.shelf === i);
-      placeBooksOnShelf(shelfContainer, shelfBooks, width, shelfHeight);
+      let shelfBooks = BOOKS.filter(b => b.shelf === i);
+      
+      if (tfInfo.layoutAffected && themeBookIds.size > 0) {
+        const themeBooks = shelfBooks.filter(b => themeBookIds.has(b.id));
+        const otherBooks = shelfBooks.filter(b => !themeBookIds.has(b.id));
+        shelfBooks = [...themeBooks, ...otherBooks];
+      }
+
+      placeBooksOnShelf(shelfContainer, shelfBooks, width, shelfHeight, tfInfo.layoutAffected);
     }
     
     updateBookVisuals();
@@ -338,6 +373,15 @@ export default function Bookshelf() {
     updateBookVisuals();
   });
 
+  createEffect(() => {
+    const tfInfo = getThemeFilterInfo();
+    if (tfInfo.layoutAffected && containerRef) {
+      const width = containerRef.clientWidth;
+      const height = containerRef.clientHeight;
+      updateBookshelf(width, height);
+    }
+  });
+
   const themeFilterInfo = createMemo(() => getThemeFilterInfo());
   const isPlaying = createMemo(() => gameState().state === 'playing');
 
@@ -351,9 +395,12 @@ export default function Bookshelf() {
         <div class="theme-filter-header">
           <span class="theme-filter-icon">🎭</span>
           <span class="theme-filter-title">分类提示（真伪难辨）</span>
+          <span class="clue-progress-badge">
+            🔍 {themeFilterInfo().unlockedClueCount}/6 线索
+          </span>
         </div>
         
-        {themeFilterInfo().displayTheme && (
+        {themeFilterInfo().available && themeFilterInfo().displayTheme && (
           <div class="theme-filter-content">
             <div class="theme-filter-suggestion">
               <span class="suggestion-label">系统猜测：</span>
@@ -402,6 +449,26 @@ export default function Bookshelf() {
                 {themeFilterInfo().judgment === 'trusted' ? '✅ 你选择了信任此提示' : '❌ 你选择了怀疑此提示'}
               </div>
             )}
+          </div>
+        )}
+
+        {!themeFilterInfo().available && !themeFilterInfo().usedThisRound && (
+          <div class="theme-filter-locked">
+            <div class="locked-icon">🔒</div>
+            <div class="locked-text">
+              解锁更多线索后可使用分类提示
+            </div>
+            <div class="locked-progress">
+              <div class="progress-bar-bg">
+                <div 
+                  class="progress-bar-fill"
+                  style={`width: ${Math.min(themeFilterInfo().unlockedClueCount / 2 * 100, 100)}%`}
+                />
+              </div>
+              <span class="progress-text">
+                {themeFilterInfo().unlockedClueCount}/2 线索解锁
+              </span>
+            </div>
           </div>
         )}
 

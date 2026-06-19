@@ -114,6 +114,7 @@ const initialStore: GameStore = {
   roundDetails: [],
   currentRoundWrongPicks: [],
   themeFilter: {
+    available: false,
     active: false,
     displayThemeId: null,
     isGenuine: false,
@@ -123,6 +124,7 @@ const initialStore: GameStore = {
       timePenalty: 5,
       scorePenalty: 100,
     },
+    layoutAffected: false,
   },
 };
 
@@ -697,6 +699,7 @@ const initializeThemeFilterForBook = (book: Book) => {
   setGameState(prev => ({
     ...prev,
     themeFilter: {
+      available: false,
       active: false,
       displayThemeId,
       isGenuine,
@@ -706,6 +709,7 @@ const initializeThemeFilterForBook = (book: Book) => {
         timePenalty: Math.floor(3 + costMultiplier * 1),
         scorePenalty: Math.floor(50 + costMultiplier * 30),
       },
+      layoutAffected: false,
     },
   }));
 };
@@ -717,6 +721,7 @@ export const getThemeFilterInfo = () => {
   return {
     ...tf,
     displayTheme,
+    unlockedClueCount: state.unlockedClues.length,
   };
 };
 
@@ -736,6 +741,7 @@ export const activateThemeFilter = () => {
       ...prev.themeFilter,
       active: true,
       usedThisRound: true,
+      layoutAffected: true,
     },
   }));
 
@@ -1092,11 +1098,17 @@ export const useHint = () => {
     c.id === lockedClue.id ? { ...c, unlocked: true, content } : c
   ));
 
+  const newUnlockedClues = [...state.unlockedClues, lockedClue.id];
+  
   setGameState(prev => ({
     ...prev,
     hintsRemaining: prev.hintsRemaining - 1,
     hintsUsed: prev.hintsUsed + 1,
-    unlockedClues: [...prev.unlockedClues, lockedClue.id],
+    unlockedClues: newUnlockedClues,
+    themeFilter: {
+      ...prev.themeFilter,
+      available: newUnlockedClues.length >= 2 && !prev.themeFilter.usedThisRound,
+    },
   }));
 };
 
@@ -1136,9 +1148,11 @@ export const useFreeHint = () => {
     c.id === lockedClue.id ? { ...c, unlocked: true, content } : c
   ));
 
+  const newUnlockedClues = [...state.unlockedClues, lockedClue.id];
+  
   setGameState(prev => ({
     ...prev,
-    unlockedClues: [...prev.unlockedClues, lockedClue.id],
+    unlockedClues: newUnlockedClues,
     powerUps: {
       ...prev.powerUps,
       freeHints: prev.powerUps.freeHints - 1,
@@ -1150,6 +1164,10 @@ export const useFreeHint = () => {
         ...prev.powerUps.powerUpsUsedTotal,
         freeHints: prev.powerUps.powerUpsUsedTotal.freeHints + 1,
       },
+    },
+    themeFilter: {
+      ...prev.themeFilter,
+      available: newUnlockedClues.length >= 2 && !prev.themeFilter.usedThisRound,
     },
   }));
 };
@@ -2478,12 +2496,14 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       wrongPicks: state.currentRoundWrongPicks,
       themeFilter: {
         used: state.themeFilter.usedThisRound,
+        available: state.themeFilter.available,
         displayThemeId: state.themeFilter.displayThemeId,
         isGenuine: state.themeFilter.isGenuine,
         judgment: state.themeFilter.judgment,
         judgmentCorrect: themeFilterResultData.judgmentCorrect,
         compensationScore: themeFilterResultData.compensationScore,
         bonusMultiplier: themeFilterResultData.bonusMultiplier,
+        layoutAffected: state.themeFilter.layoutAffected,
       },
     };
 

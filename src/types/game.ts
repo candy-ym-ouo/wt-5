@@ -318,12 +318,14 @@ export interface RoundDetail {
   }[];
   themeFilter?: {
     used: boolean;
+    available: boolean;
     displayThemeId: string | null;
     isGenuine: boolean;
     judgment: ThemeFilterJudgment;
     judgmentCorrect: boolean;
     compensationScore: number;
     bonusMultiplier: number;
+    layoutAffected: boolean;
   };
 }
 
@@ -371,6 +373,7 @@ export interface GameReplayData {
 export type ThemeFilterJudgment = 'trusted' | 'distrusted' | null;
 
 export interface ThemeFilterState {
+  available: boolean;
   active: boolean;
   displayThemeId: string | null;
   isGenuine: boolean;
@@ -380,6 +383,7 @@ export interface ThemeFilterState {
     timePenalty: number;
     scorePenalty: number;
   };
+  layoutAffected: boolean;
 }
 
 export interface ThemeFilterResult {

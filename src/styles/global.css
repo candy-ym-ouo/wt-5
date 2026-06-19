@@ -3740,6 +3740,7 @@ body {
   margin-bottom: 10px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(255, 215, 0, 0.3);
+  flex-wrap: wrap;
 }
 
 .theme-filter-icon {
@@ -3753,6 +3754,17 @@ body {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.clue-progress-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  background: rgba(139, 92, 246, 0.2);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  border-radius: 12px;
+  color: #a78bfa;
+  font-weight: 600;
 }
 
 .theme-filter-content {
@@ -3932,6 +3944,57 @@ body {
   font-size: 0.75rem;
   color: #a08060;
   line-height: 1.4;
+}
+
+/* 主题筛选锁定状态 */
+.theme-filter-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.locked-icon {
+  font-size: 2rem;
+  opacity: 0.6;
+}
+
+.locked-text {
+  font-size: 0.85rem;
+  color: #a08060;
+  text-align: center;
+}
+
+.locked-progress {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.progress-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6, #ffd700);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.progress-text {
+  font-size: 0.75rem;
+  color: #a08060;
+  text-align: center;
 }
 
 /* 主题筛选结果提示横幅 */
