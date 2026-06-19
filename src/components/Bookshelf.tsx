@@ -12,6 +12,31 @@ export default function Bookshelf() {
   
   const [hoveredBook, setHoveredBook] = createSignal<Book | null>(null);
 
+  const updateBookVisuals = () => {
+    if (!app) return;
+    const state = gameState();
+    const targetId = state.targetBookId;
+    const peekActive = state.powerUps.peekActive;
+    const eliminatedIds = state.powerUps.eliminatedBookIds;
+
+    bookSprites.forEach((sprite, bookId) => {
+      if (eliminatedIds.includes(bookId)) {
+        sprite.alpha = 0.2;
+        sprite.tint = 0x888888;
+        sprite.interactive = false;
+        sprite.buttonMode = false;
+      } else if (peekActive && bookId === targetId) {
+        sprite.alpha = 1;
+        sprite.tint = 0xffff00;
+      } else {
+        sprite.alpha = 1;
+        sprite.tint = 0xffffff;
+        sprite.interactive = true;
+        sprite.buttonMode = true;
+      }
+    });
+  };
+
   onMount(() => {
     if (!containerRef) return;
 
@@ -198,6 +223,9 @@ export default function Bookshelf() {
     const gameStatus = gameState().state;
     if (gameStatus !== 'playing') return;
 
+    const eliminatedIds = gameState().powerUps.eliminatedBookIds;
+    if (eliminatedIds.includes(book.id)) return;
+
     const isCorrect = selectBook(book.id);
 
     if (isCorrect) {
@@ -247,6 +275,8 @@ export default function Bookshelf() {
       const shelfBooks = BOOKS.filter(b => b.shelf === i);
       placeBooksOnShelf(shelfContainer, shelfBooks, width, shelfHeight);
     }
+    
+    updateBookVisuals();
   };
 
   createEffect(() => {
@@ -257,6 +287,11 @@ export default function Bookshelf() {
         targetSprite.tint = 0x00ff00;
       }
     }
+  });
+
+  createEffect(() => {
+    gameState();
+    updateBookVisuals();
   });
 
   return (

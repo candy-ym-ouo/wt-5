@@ -117,3 +117,90 @@
   max-height: 300px;
   overflow-y: auto;
 }
+
+.powerup-title {
+  margin-top: 16px;
+}
+
+.powerup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.powerup-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.15), rgba(255, 165, 0, 0.1));
+  border: 1px solid rgba(255, 215, 0, 0.4);
+  border-radius: 8px;
+  color: #f5e6d3;
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.powerup-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.25), rgba(255, 165, 0, 0.2));
+  border-color: rgba(255, 215, 0, 0.7);
+  transform: translateY(-1px);
+}
+
+.powerup-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.powerup-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: rgba(100, 80, 60, 0.2);
+  border-color: rgba(100, 80, 60, 0.3);
+}
+
+.powerup-icon {
+  font-size: 1.2rem;
+}
+
+.powerup-name {
+  flex: 1;
+  text-align: left;
+}
+
+.powerup-count {
+  font-weight: bold;
+  color: #ffd700;
+  font-size: 0.9rem;
+}
+
+.powerup-penalties {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(160, 128, 96, 0.3);
+}
+
+.penalty-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  color: #a08060;
+}
+
+.eliminated-info {
+  margin-top: 8px;
+  padding: 8px;
+  background: rgba(255, 100, 100, 0.1);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  border-radius: 6px;
+  color: #ff8080;
+  font-size: 0.75rem;
+  text-align: center;
+}

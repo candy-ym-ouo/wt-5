@@ -246,13 +246,14 @@ export const calculateScoreWithDifficulty = (
   timeRemaining: number,
   hintsUsed: number,
   difficulty: DifficultyLevel,
-  findTime: number
+  findTime: number,
+  powerUpPenalty: number = 0
 ): number => {
   const config = getDifficultyConfig(difficulty);
   const timeBonus = Math.floor(timeRemaining / 10) * 10;
   const hintPenalty = hintsUsed * config.hintPenalty;
   const timeEfficiencyBonus = Math.max(0, Math.floor((config.gameTime / 2 - findTime) * 2));
   
-  const rawScore = (baseScore + timeBonus + timeEfficiencyBonus - hintPenalty) * config.scoreMultiplier;
+  const rawScore = (baseScore + timeBonus + timeEfficiencyBonus - hintPenalty - powerUpPenalty) * config.scoreMultiplier;
   return Math.max(Math.floor(rawScore), 100);
 };

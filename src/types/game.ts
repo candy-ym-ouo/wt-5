@@ -73,6 +73,38 @@ export type LeaderboardTab = 'weekly' | 'overall' | 'personal' | 'achievements';
 
 export type GameState = 'idle' | 'playing' | 'paused' | 'won' | 'lost' | 'chapter_complete';
 
+export type PowerUpType = 'free_hint' | 'time_peek' | 'eliminate_wrong';
+
+export interface PowerUpConfig {
+  id: PowerUpType;
+  name: string;
+  description: string;
+  icon: string;
+  scorePenalty: number;
+  initialCount: number;
+  peekDuration?: number;
+  eliminateCount?: number;
+}
+
+export interface PowerUpState {
+  freeHints: number;
+  timePeeks: number;
+  eliminateWrongs: number;
+  peekActive: boolean;
+  peekEndTime: number;
+  eliminatedBookIds: string[];
+  powerUpsUsedThisRound: {
+    freeHints: number;
+    timePeeks: number;
+    eliminateWrongs: number;
+  };
+  powerUpsUsedTotal: {
+    freeHints: number;
+    timePeeks: number;
+    eliminateWrongs: number;
+  };
+}
+
 export type ChapterStatus = 'locked' | 'in_progress' | 'completed';
 
 export type DifficultyLevel = 'easy' | 'normal' | 'hard' | 'expert' | 'master';
@@ -179,4 +211,5 @@ export interface GameStore {
   difficultyAdjustmentReason: string | null;
   showDifficultyChange: boolean;
   lastTimeBonus: number;
+  powerUps: PowerUpState;
 }

@@ -11,6 +11,12 @@ import {
   calculateScoreWithDifficulty,
 } from '../data/difficulty';
 import {
+  createInitialPowerUpState,
+  getPowerUpConfig,
+  calculatePowerUpPenalty,
+  hasUsedAnyPowerUp,
+} from '../data/powerUps';
+import {
   getUnlockedAchievements,
   saveUnlockedAchievements,
   incrementGamesPlayed,
@@ -58,6 +64,7 @@ const initialStore: GameStore = {
   difficultyAdjustmentReason: null,
   showDifficultyChange: false,
   lastTimeBonus: 0,
+  powerUps: createInitialPowerUpState(DEFAULT_DIFFICULTY),
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -84,6 +91,7 @@ export const setDifficulty = (level: DifficultyLevel, mode: DifficultyMode = 'dy
     difficultyHistory: [level],
     timeRemaining: config.gameTime,
     hintsRemaining: config.initialHints,
+    powerUps: createInitialPowerUpState(level),
   }));
 };
 
@@ -107,7 +115,10 @@ export const checkAchievements = () => {
     newAchievement = 'speed_reader';
   }
 
-  if (state.hintsUsed === 0 && state.foundBooks.length >= 1 && !unlocked.includes('no_hints')) {
+  if (state.hintsUsed === 0 && 
+      state.foundBooks.length >= 1 && 
+      !hasUsedAnyPowerUp(state.powerUps.powerUpsUsedTotal) && 
+      !unlocked.includes('no_hints')) {
     unlocked.push('no_hints');
     newAchievement = 'no_hints';
   }
@@ -185,7 +196,11 @@ export const checkAchievements = () => {
     }
   }
 
-  if (state.difficultyLevel === 'master' && state.hintsUsed === 0 && state.foundBooks.length >= 1 && !unlocked.includes('master_no_hints')) {
+  if (state.difficultyLevel === 'master' && 
+      state.hintsUsed === 0 && 
+      state.foundBooks.length >= 1 && 
+      !hasUsedAnyPowerUp(state.powerUps.powerUpsUsedTotal) && 
+      !unlocked.includes('master_no_hints')) {
     unlocked.push('master_no_hints');
     newAchievement = 'master_no_hints';
   }
@@ -228,6 +243,40 @@ export const checkAchievements = () => {
       unlocked.push('season_top3');
       newAchievement = 'season_top3';
     }
+  }
+
+  const usedPowerUps = state.powerUps.powerUpsUsedTotal;
+  if (hasUsedAnyPowerUp(usedPowerUps) && !unlocked.includes('powerup_first')) {
+    unlocked.push('powerup_first');
+    newAchievement = 'powerup_first';
+  }
+
+  if (usedPowerUps.freeHints > 0 && usedPowerUps.timePeeks > 0 && usedPowerUps.eliminateWrongs > 0 && !unlocked.includes('powerup_collector')) {
+    unlocked.push('powerup_collector');
+    newAchievement = 'powerup_collector';
+  }
+
+  if (usedPowerUps.timePeeks >= 5 && !unlocked.includes('peek_master')) {
+    unlocked.push('peek_master');
+    newAchievement = 'peek_master';
+  }
+
+  if (usedPowerUps.eliminateWrongs >= 5 && !unlocked.includes('elimination_expert')) {
+    unlocked.push('elimination_expert');
+    newAchievement = 'elimination_expert';
+  }
+
+  if (usedPowerUps.freeHints >= 10 && !unlocked.includes('free_hint_saver')) {
+    unlocked.push('free_hint_saver');
+    newAchievement = 'free_hint_saver';
+  }
+
+  if ((state.state === 'won' || state.state === 'lost' || state.state === 'chapter_complete') &&
+      state.foundBooks.length >= 1 &&
+      !hasUsedAnyPowerUp(usedPowerUps) &&
+      !unlocked.includes('purist')) {
+    unlocked.push('purist');
+    newAchievement = 'purist';
   }
 
   if (unlocked.length !== state.unlockedAchievements.length) {
@@ -371,6 +420,7 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
     difficultyAdjustmentReason: null,
     showDifficultyChange: false,
     lastTimeBonus: 0,
+    powerUps: createInitialPowerUpState(diffLevel),
   }));
 
   startTimer();
@@ -437,6 +487,7 @@ export const startChapterGame = (chapterId: string) => {
     difficultyAdjustmentReason: null,
     showDifficultyChange: false,
     lastTimeBonus: 0,
+    powerUps: createInitialPowerUpState(DEFAULT_DIFFICULTY),
   }));
 
   startTimer();
@@ -482,6 +533,153 @@ export const useHint = () => {
     hintsRemaining: prev.hintsRemaining - 1,
     hintsUsed: prev.hintsUsed + 1,
     unlockedClues: [...prev.unlockedClues, lockedClue.id],
+  }));
+};
+
+export const useFreeHint = () => {
+  const state = gameState();
+  if (state.powerUps.freeHints <= 0 || state.state !== 'playing') return;
+
+  const clues = currentClues();
+  const lockedClue = clues.find(c => !c.unlocked);
+  
+  if (!lockedClue) return;
+
+  const book = targetBook();
+  if (!book) return;
+
+  let content = lockedClue.content;
+  switch (lockedClue.type) {
+    case 'year':
+      content = CLUE_TEMPLATES.year(book.year);
+      break;
+    case 'author':
+      content = CLUE_TEMPLATES.author(book.author);
+      break;
+    case 'genre':
+      content = CLUE_TEMPLATES.genre(book.genre);
+      break;
+    case 'shelf':
+      content = CLUE_TEMPLATES.shelf(book.shelf);
+      break;
+    case 'title':
+      content = CLUE_TEMPLATES.title(book.title);
+      break;
+  }
+
+  setCurrentClues(prev => prev.map(c => 
+    c.id === lockedClue.id ? { ...c, unlocked: true, content } : c
+  ));
+
+  setGameState(prev => ({
+    ...prev,
+    unlockedClues: [...prev.unlockedClues, lockedClue.id],
+    powerUps: {
+      ...prev.powerUps,
+      freeHints: prev.powerUps.freeHints - 1,
+      powerUpsUsedThisRound: {
+        ...prev.powerUps.powerUpsUsedThisRound,
+        freeHints: prev.powerUps.powerUpsUsedThisRound.freeHints + 1,
+      },
+      powerUpsUsedTotal: {
+        ...prev.powerUps.powerUpsUsedTotal,
+        freeHints: prev.powerUps.powerUpsUsedTotal.freeHints + 1,
+      },
+    },
+  }));
+};
+
+let peekInterval: number | null = null;
+
+export const useTimePeek = () => {
+  const state = gameState();
+  if (state.powerUps.timePeeks <= 0 || state.state !== 'playing' || state.powerUps.peekActive) return;
+
+  const config = getPowerUpConfig('time_peek');
+  const duration = config.peekDuration || 8;
+
+  if (peekInterval) {
+    clearInterval(peekInterval);
+  }
+
+  const endTime = Date.now() + duration * 1000;
+
+  setGameState(prev => ({
+    ...prev,
+    powerUps: {
+      ...prev.powerUps,
+      timePeeks: prev.powerUps.timePeeks - 1,
+      peekActive: true,
+      peekEndTime: endTime,
+      powerUpsUsedThisRound: {
+        ...prev.powerUps.powerUpsUsedThisRound,
+        timePeeks: prev.powerUps.powerUpsUsedThisRound.timePeeks + 1,
+      },
+      powerUpsUsedTotal: {
+        ...prev.powerUps.powerUpsUsedTotal,
+        timePeeks: prev.powerUps.powerUpsUsedTotal.timePeeks + 1,
+      },
+    },
+  }));
+
+  peekInterval = window.setInterval(() => {
+    const currentState = gameState();
+    if (Date.now() >= currentState.powerUps.peekEndTime || !currentState.powerUps.peekActive) {
+      if (peekInterval) {
+        clearInterval(peekInterval);
+        peekInterval = null;
+      }
+      setGameState(prev => ({
+        ...prev,
+        powerUps: {
+          ...prev.powerUps,
+          peekActive: false,
+          peekEndTime: 0,
+        },
+      }));
+    }
+  }, 200);
+};
+
+export const getPeekTimeRemaining = (): number => {
+  const state = gameState();
+  if (!state.powerUps.peekActive) return 0;
+  return Math.max(0, Math.ceil((state.powerUps.peekEndTime - Date.now()) / 1000));
+};
+
+export const useEliminateWrong = () => {
+  const state = gameState();
+  if (state.powerUps.eliminateWrongs <= 0 || state.state !== 'playing') return;
+
+  const book = targetBook();
+  if (!book) return;
+
+  const config = getPowerUpConfig('eliminate_wrong');
+  const count = config.eliminateCount || 2;
+
+  const wrongBooks = BOOKS.filter(b => b.id !== book.id && !state.powerUps.eliminatedBookIds.includes(b.id));
+  
+  if (wrongBooks.length === 0) return;
+
+  const shuffled = [...wrongBooks].sort(() => Math.random() - 0.5);
+  const toEliminate = shuffled.slice(0, Math.min(count, shuffled.length));
+  const eliminatedIds = toEliminate.map(b => b.id);
+
+  setGameState(prev => ({
+    ...prev,
+    powerUps: {
+      ...prev.powerUps,
+      eliminateWrongs: prev.powerUps.eliminateWrongs - 1,
+      eliminatedBookIds: [...prev.powerUps.eliminatedBookIds, ...eliminatedIds],
+      powerUpsUsedThisRound: {
+        ...prev.powerUps.powerUpsUsedThisRound,
+        eliminateWrongs: prev.powerUps.powerUpsUsedThisRound.eliminateWrongs + 1,
+      },
+      powerUpsUsedTotal: {
+        ...prev.powerUps.powerUpsUsedTotal,
+        eliminateWrongs: prev.powerUps.powerUpsUsedTotal.eliminateWrongs + 1,
+      },
+    },
   }));
 };
 
@@ -546,7 +744,9 @@ const completeChapter = () => {
     newAchievement = 'chapter_master';
   }
 
-  if (state.chapterHintsUsed === 0 && !unlocked.includes('perfect_chapter')) {
+  if (state.chapterHintsUsed === 0 && 
+      !hasUsedAnyPowerUp(state.powerUps.powerUpsUsedTotal) && 
+      !unlocked.includes('perfect_chapter')) {
     unlocked.push('perfect_chapter');
     newAchievement = 'perfect_chapter';
   }
@@ -603,6 +803,10 @@ export const selectBook = (bookId: string): boolean => {
   const state = gameState();
   if (state.state !== 'playing') return false;
 
+  if (state.powerUps.eliminatedBookIds.includes(bookId)) {
+    return false;
+  }
+
   const book = targetBook();
   if (!book) return false;
 
@@ -612,12 +816,15 @@ export const selectBook = (bookId: string): boolean => {
     const findTime = (Date.now() - roundStartTime()) / 1000;
     setLastFindTime(findTime);
     
+    const powerUpPenalty = calculatePowerUpPenalty(state.powerUps.powerUpsUsedThisRound);
+    
     const score = calculateScoreWithDifficulty(
       config.baseScore,
       state.timeRemaining,
       state.hintsUsed,
       state.difficultyLevel,
-      findTime
+      findTime,
+      powerUpPenalty
     );
 
     const newFoundGenres = [...foundGenres(), book.genre];
@@ -719,6 +926,11 @@ export const nextRound = () => {
     setCurrentTask(nextTask);
     setupRound(book);
 
+    if (peekInterval) {
+      clearInterval(peekInterval);
+      peekInterval = null;
+    }
+
     setGameState(prev => ({
       ...prev,
       state: 'playing',
@@ -729,6 +941,17 @@ export const nextRound = () => {
       hintsRemaining: Math.min(prev.hintsRemaining + 1, config.initialHints),
       hintsUsed: 0,
       showDifficultyChange: false,
+      powerUps: {
+        ...prev.powerUps,
+        peekActive: false,
+        peekEndTime: 0,
+        eliminatedBookIds: [],
+        powerUpsUsedThisRound: {
+          freeHints: 0,
+          timePeeks: 0,
+          eliminateWrongs: 0,
+        },
+      },
     }));
 
     startTimer();
@@ -771,6 +994,11 @@ export const nextRound = () => {
     const roundCompletionBonus = 10;
     const totalTimeBonus = roundCompletionBonus + timeBonus;
 
+    if (peekInterval) {
+      clearInterval(peekInterval);
+      peekInterval = null;
+    }
+
     setGameState(prev => ({
       ...prev,
       state: 'playing',
@@ -785,6 +1013,17 @@ export const nextRound = () => {
       showDifficultyChange: showChange,
       timeRemaining: prev.timeRemaining + totalTimeBonus,
       lastTimeBonus: totalTimeBonus,
+      powerUps: {
+        ...prev.powerUps,
+        peekActive: false,
+        peekEndTime: 0,
+        eliminatedBookIds: [],
+        powerUpsUsedThisRound: {
+          freeHints: 0,
+          timePeeks: 0,
+          eliminateWrongs: 0,
+        },
+      },
     }));
 
     if (showChange) {
@@ -807,6 +1046,10 @@ export const resumeGame = () => {
 
 export const resetGame = () => {
   if (timerInterval) clearInterval(timerInterval);
+  if (peekInterval) {
+    clearInterval(peekInterval);
+    peekInterval = null;
+  }
   setGameState(initialStore);
   setCurrentClues([]);
   setTargetBook(null);
@@ -829,6 +1072,11 @@ export const restartCurrentTask = () => {
 
   const config = getDifficultyConfig(state.difficultyLevel);
 
+  if (peekInterval) {
+    clearInterval(peekInterval);
+    peekInterval = null;
+  }
+
   setupRound(book);
   setFoundGenres([]);
 
@@ -841,6 +1089,17 @@ export const restartCurrentTask = () => {
     targetBookId: book.id,
     unlockedClues: [currentClues()[0]?.id || ''],
     consecutiveCorrect: 0,
+    powerUps: {
+      ...prev.powerUps,
+      peekActive: false,
+      peekEndTime: 0,
+      eliminatedBookIds: [],
+      powerUpsUsedThisRound: {
+        freeHints: 0,
+        timePeeks: 0,
+        eliminateWrongs: 0,
+      },
+    },
   }));
 
   startTimer();

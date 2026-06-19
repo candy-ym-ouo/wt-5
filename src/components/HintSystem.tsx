@@ -1,6 +1,7 @@
-import { createMemo } from 'solid-js';
-import { useHint, gameState, getDifficultyInfo } from '../store/gameStore';
+import { createMemo, createSignal, createEffect } from 'solid-js';
+import { useHint, useFreeHint, useTimePeek, useEliminateWrong, getPeekTimeRemaining, gameState, getDifficultyInfo } from '../store/gameStore';
 import { getDifficultyConfig } from '../data/difficulty';
+import { POWER_UP_CONFIGS } from '../data/powerUps';
 
 export default function HintSystem() {
   const state = createMemo(() => gameState());
@@ -12,6 +13,32 @@ export default function HintSystem() {
   const maxHints = createMemo(() => getDifficultyConfig(state().difficultyLevel).initialHints);
   const diffConfig = createMemo(() => diffInfo().config);
   const isDynamic = createMemo(() => diffInfo().mode === 'dynamic');
+
+  const powerUps = createMemo(() => state().powerUps);
+  const [peekTime, setPeekTime] = createSignal(0);
+
+  createEffect(() => {
+    if (powerUps().peekActive) {
+      const interval = setInterval(() => {
+        setPeekTime(getPeekTimeRemaining());
+      }, 200);
+      return () => clearInterval(interval);
+    } else {
+      setPeekTime(0);
+    }
+  });
+
+  const freeHintDisabled = createMemo(() => 
+    powerUps().freeHints <= 0 || !isPlaying()
+  );
+
+  const timePeekDisabled = createMemo(() => 
+    powerUps().timePeeks <= 0 || !isPlaying() || powerUps().peekActive
+  );
+
+  const eliminateWrongDisabled = createMemo(() => 
+    powerUps().eliminateWrongs <= 0 || !isPlaying()
+  );
 
   return (
     <div class="sidebar-section">
@@ -47,6 +74,65 @@ export default function HintSystem() {
       <div class="hint-penalty">
         每次提示扣分：{diffConfig().hintPenalty}
       </div>
+
+      <div class="section-title powerup-title">
+        <span>🎁</span>
+        <span>道具</span>
+      </div>
+
+      <div class="powerup-list">
+        <button
+          class="powerup-button"
+          onClick={useFreeHint}
+          disabled={freeHintDisabled()}
+          title={POWER_UP_CONFIGS.free_hint.description}
+        >
+          <span class="powerup-icon">{POWER_UP_CONFIGS.free_hint.icon}</span>
+          <span class="powerup-name">{POWER_UP_CONFIGS.free_hint.name}</span>
+          <span class="powerup-count">x{powerUps().freeHints}</span>
+        </button>
+
+        <button
+          class="powerup-button"
+          onClick={useTimePeek}
+          disabled={timePeekDisabled()}
+          title={POWER_UP_CONFIGS.time_peek.description}
+        >
+          <span class="powerup-icon">{POWER_UP_CONFIGS.time_peek.icon}</span>
+          <span class="powerup-name">{POWER_UP_CONFIGS.time_peek.name}</span>
+          <span class="powerup-count">
+            {powerUps().peekActive ? `${peekTime()}s` : `x${powerUps().timePeeks}`}
+          </span>
+        </button>
+
+        <button
+          class="powerup-button"
+          onClick={useEliminateWrong}
+          disabled={eliminateWrongDisabled()}
+          title={POWER_UP_CONFIGS.eliminate_wrong.description}
+        >
+          <span class="powerup-icon">{POWER_UP_CONFIGS.eliminate_wrong.icon}</span>
+          <span class="powerup-name">{POWER_UP_CONFIGS.eliminate_wrong.name}</span>
+          <span class="powerup-count">x{powerUps().eliminateWrongs}</span>
+        </button>
+      </div>
+
+      <div class="powerup-penalties">
+        <div class="penalty-item">
+          <span>{POWER_UP_CONFIGS.time_peek.icon}</span>
+          <span>扣分：{POWER_UP_CONFIGS.time_peek.scorePenalty}</span>
+        </div>
+        <div class="penalty-item">
+          <span>{POWER_UP_CONFIGS.eliminate_wrong.icon}</span>
+          <span>扣分：{POWER_UP_CONFIGS.eliminate_wrong.scorePenalty}</span>
+        </div>
+      </div>
+
+      {powerUps().eliminatedBookIds.length > 0 && (
+        <div class="eliminated-info">
+          已排除 {powerUps().eliminatedBookIds.length} 本错误书籍
+        </div>
+      )}
     </div>
   );
 }
