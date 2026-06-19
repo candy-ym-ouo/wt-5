@@ -8,11 +8,11 @@ import {
   getPersonalBest,
   getCurrentSeason,
   getCurrentWeekNumber,
-  getGameReplayById,
+  getGameReplayByScore,
   getAllGameReplays,
 } from '../utils/storage';
 import { ACHIEVEMENTS } from '../data/achievements';
-import { gameState, checkAchievements, saveCurrentGameReplay } from '../store/gameStore';
+import { gameState, checkAchievements, saveCurrentGameReplay, achievementProgress } from '../store/gameStore';
 import PostGameReview from './PostGameReview';
 
 interface LeaderboardProps {
@@ -101,6 +101,25 @@ export default function Leaderboard(props: LeaderboardProps) {
   };
 
   const unlockedCount = createMemo(() => unlockedIds().length);
+  const progressData = createMemo(() => achievementProgress());
+
+  const calculateOverallProgress = (): number => {
+    let totalMax = 0;
+    let totalCurrent = 0;
+    for (const achievement of ACHIEVEMENTS) {
+      if (achievement.type === 'progressive' && achievement.maxProgress) {
+        totalMax += achievement.maxProgress;
+        const prog = progressData()[achievement.id];
+        totalCurrent += prog ? Math.min(prog.currentProgress, achievement.maxProgress) : 0;
+      } else {
+        totalMax += 1;
+        totalCurrent += unlockedIds().includes(achievement.id) ? 1 : 0;
+      }
+    }
+    return totalMax > 0 ? (totalCurrent / totalMax) * 100 : 0;
+  };
+
+  const overallProgress = createMemo(() => calculateOverallProgress());
 
   return (
     <div class="modal-overlay" onClick={props.onClose}>
@@ -339,13 +358,13 @@ export default function Leaderboard(props: LeaderboardProps) {
                 <div class="ach-stat-label">已解锁</div>
               </div>
               <div class="ach-stat">
-                <div class="ach-stat-value">{Math.round(unlockedCount() / ACHIEVEMENTS.length * 100)}%</div>
-                <div class="ach-stat-label">完成度</div>
+                <div class="ach-stat-value">{Math.round(overallProgress())}%</div>
+                <div class="ach-stat-label">总完成度</div>
               </div>
               <div class="ach-progress-bar">
                 <div
                   class="ach-progress-fill"
-                  style={{ width: `${unlockedCount() / ACHIEVEMENTS.length * 100}%` }}
+                  style={{ width: `${overallProgress()}%` }}
                 />
               </div>
             </div>
@@ -353,11 +372,39 @@ export default function Leaderboard(props: LeaderboardProps) {
               <For each={ACHIEVEMENTS}>
                 {(achievement) => {
                   const isUnlocked = createMemo(() => unlockedIds().includes(achievement.id));
+                  const prog = createMemo(() => progressData()[achievement.id]);
+                  const isProgressive = achievement.type === 'progressive';
+                  const progressPercent = createMemo(() => {
+                    if (!isProgressive || !achievement.maxProgress) return isUnlocked() ? 100 : 0;
+                    const p = prog();
+                    if (!p) return 0;
+                    return Math.min(100, (p.currentProgress / achievement.maxProgress) * 100);
+                  });
+                  const progressText = createMemo(() => {
+                    if (!isProgressive || !achievement.maxProgress) return '';
+                    const p = prog();
+                    const current = p ? p.currentProgress : 0;
+                    return `${current}/${achievement.maxProgress}`;
+                  });
+
                   return (
                     <div class={`achievement-item ${isUnlocked() ? 'unlocked' : 'locked'}`}>
-                      <div class="achievement-icon">{achievement.icon}</div>
+                      <div class="achievement-icon">
+                        {achievement.icon}
+                        {isProgressive && !isUnlocked() && (
+                          <div class="achievement-mini-progress">
+                            <div
+                              class="achievement-mini-progress-fill"
+                              style={{ width: `${progressPercent()}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
                       <div class="achievement-name">{achievement.title}</div>
                       <div class="achievement-desc">{achievement.description}</div>
+                      {isProgressive && !isUnlocked() && (
+                        <div class="achievement-progress-text">{progressText()}</div>
+                      )}
                     </div>
                   );
                 }}

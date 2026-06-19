@@ -380,6 +380,7 @@ body {
 .achievement-icon {
   font-size: 1.8rem;
   margin-bottom: 6px;
+  position: relative;
 }
 
 .achievement-item.locked .achievement-icon {
@@ -401,6 +402,13 @@ body {
   font-size: 0.7rem;
   color: #a08060;
   line-height: 1.4;
+}
+
+.achievement-progress-text {
+  font-size: 0.65rem;
+  color: #ffd700;
+  margin-top: 4px;
+  font-weight: bold;
 }
 
 .tabs {

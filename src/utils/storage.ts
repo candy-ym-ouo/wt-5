@@ -1,4 +1,5 @@
 import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress } from '../types/game';
+import { ACHIEVEMENTS } from '../data/achievements';
 
 export const LEADERBOARD_KEY = 'old_bookstore_leaderboard';
 export const ACHIEVEMENTS_KEY = 'old_bookstore_achievements';
@@ -385,22 +386,119 @@ function migrateFromV3ToV4(): void {
     if (existingProgress) return;
 
     const unlockedIds = getUnlockedAchievements();
-    if (unlockedIds.length === 0) return;
-
-    const progress: Record<string, AchievementProgress> = {};
+    const pb = getPersonalBest();
+    const gamesPlayedCount = getGamesPlayed();
     const now = Date.now();
 
+    const progress: Record<string, AchievementProgress> = {};
+    const newUnlockedIds = [...unlockedIds];
+
+    const oldStreakAchievements: Record<string, number> = {
+      'streak_3': 3,
+      'streak_5': 5,
+      'streak_8': 8,
+      'streak_12': 12,
+      'streak_16': 16,
+      'streak_20': 20,
+      'streak_30': 30,
+    };
+
+    let bestStreakFromOld = pb.longestStreak || 0;
+    for (const [oldId, threshold] of Object.entries(oldStreakAchievements)) {
+      if (unlockedIds.includes(oldId)) {
+        bestStreakFromOld = Math.max(bestStreakFromOld, threshold);
+      }
+    }
+
+    const progressiveAchievements = [
+      {
+        id: 'bookworm',
+        progressValue: pb.totalBooksFound || 0,
+        oldIds: ['first_book', 'bookworm', 'perfect_round'],
+      },
+      {
+        id: 'veteran',
+        progressValue: gamesPlayedCount || 0,
+        oldIds: ['veteran'],
+      },
+      {
+        id: 'streak_master',
+        progressValue: bestStreakFromOld,
+        oldIds: Object.keys(oldStreakAchievements),
+      },
+    ];
+
+    for (const progAchv of progressiveAchievements) {
+      const achievement = ACHIEVEMENTS.find(a => a.id === progAchv.id);
+      if (!achievement || !achievement.stages) continue;
+
+      let wasUnlocked = false;
+      for (const oldId of progAchv.oldIds) {
+        if (unlockedIds.includes(oldId)) {
+          wasUnlocked = true;
+          break;
+        }
+      }
+
+      const currentProgress = Math.max(
+        progAchv.progressValue,
+        wasUnlocked ? (achievement.stages[0]?.threshold || 1) : 0
+      );
+
+      const unlockedStages: string[] = [];
+      const stageUnlockTimes: Record<string, number> = {};
+
+      for (const stage of achievement.stages) {
+        if (currentProgress >= stage.threshold) {
+          unlockedStages.push(stage.id);
+          stageUnlockTimes[stage.id] = now;
+        }
+      }
+
+      const isCompleted = achievement.stages.length > 0 &&
+        currentProgress >= achievement.stages[achievement.stages.length - 1].threshold;
+
+      if (wasUnlocked && !newUnlockedIds.includes(progAchv.id)) {
+        newUnlockedIds.push(progAchv.id);
+      }
+
+      if (wasUnlocked || currentProgress > 0) {
+        progress[progAchv.id] = {
+          achievementId: progAchv.id,
+          currentProgress,
+          unlockedStages,
+          stageUnlockTimes,
+          unlockedAt: wasUnlocked ? now : undefined,
+          completedAt: isCompleted ? now : undefined,
+        };
+      }
+    }
+
     for (const id of unlockedIds) {
-      progress[id] = {
-        achievementId: id,
-        currentProgress: 1,
-        unlockedStages: [],
-        unlockedAt: now,
-        completedAt: now,
-      };
+      if (progress[id]) continue;
+      if (oldStreakAchievements[id]) continue;
+
+      const achievement = ACHIEVEMENTS.find(a => a.id === id);
+      if (!achievement) continue;
+
+      if (achievement.type === 'single') {
+        progress[id] = {
+          achievementId: id,
+          currentProgress: 1,
+          unlockedStages: [],
+          unlockedAt: now,
+          completedAt: now,
+        };
+      }
     }
 
     saveAllAchievementProgress(progress);
+
+    const finalUnlockedIds = newUnlockedIds.filter(id => {
+      if (oldStreakAchievements[id]) return false;
+      return true;
+    });
+    saveUnlockedAchievements(finalUnlockedIds);
   } catch {}
 }
 
