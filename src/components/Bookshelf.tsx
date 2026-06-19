@@ -1,7 +1,8 @@
-import { onMount, onCleanup, createSignal, createEffect } from 'solid-js';
+import { onMount, onCleanup, createSignal, createEffect, createMemo } from 'solid-js';
 import * as PIXI from 'pixi.js';
 import { BOOKS, SHELF_COUNT } from '../data/books';
-import { selectBookWithRarity, gameState, showWrongWarning, lastPenaltyInfo, getWrongPenaltyInfo } from '../store/gameStore';
+import { selectBookWithRarity, gameState, showWrongWarning, lastPenaltyInfo, getWrongPenaltyInfo, getThemeFilterInfo, activateThemeFilter, judgeThemeFilter } from '../store/gameStore';
+import { getThemeById } from '../data/themes';
 import type { Book, PenaltyLevel } from '../types/game';
 
 export default function Bookshelf() {
@@ -31,14 +32,27 @@ export default function Bookshelf() {
     return parts.join(' · ');
   };
 
+  const themeHighlightedBookIds = createMemo(() => {
+    const tfInfo = getThemeFilterInfo();
+    if (!tfInfo.active || !tfInfo.displayThemeId) return new Set<string>();
+    const theme = getThemeById(tfInfo.displayThemeId);
+    if (!theme) return new Set<string>();
+    return new Set(theme.bookIds);
+  });
+
   const updateBookVisuals = () => {
     if (!app) return;
     const state = gameState();
     const targetId = state.targetBookId;
     const peekActive = state.powerUps.peekActive;
     const eliminatedIds = state.powerUps.eliminatedBookIds;
+    const highlightedIds = themeHighlightedBookIds();
+    const themeFilterActive = state.themeFilter.active;
 
     bookSprites.forEach((sprite, bookId) => {
+      const book = BOOKS.find(b => b.id === bookId);
+      if (!book) return;
+
       if (eliminatedIds.includes(bookId)) {
         sprite.alpha = 0.2;
         sprite.tint = 0x888888;
@@ -47,6 +61,16 @@ export default function Bookshelf() {
       } else if (peekActive && bookId === targetId) {
         sprite.alpha = 1;
         sprite.tint = 0xffff00;
+      } else if (themeFilterActive) {
+        if (highlightedIds.has(bookId)) {
+          sprite.alpha = 1;
+          sprite.tint = state.themeFilter.isGenuine ? 0x00ff88 : 0xff6688;
+        } else {
+          sprite.alpha = 0.35;
+          sprite.tint = 0x444444;
+        }
+        sprite.interactive = true;
+        sprite.buttonMode = true;
       } else {
         sprite.alpha = 1;
         sprite.tint = 0xffffff;
@@ -314,12 +338,78 @@ export default function Bookshelf() {
     updateBookVisuals();
   });
 
+  const themeFilterInfo = createMemo(() => getThemeFilterInfo());
+  const isPlaying = createMemo(() => gameState().state === 'playing');
+
   return (
     <div 
       ref={containerRef} 
       class={`bookshelf-section ${showWrongWarning() ? `penalty-overlay penalty-${showWrongWarning()}` : ''} ${shakeTrigger() > 0 ? 'shake' : ''}`}
       data-shake={shakeTrigger()}
     >
+      <div class="theme-filter-panel">
+        <div class="theme-filter-header">
+          <span class="theme-filter-icon">🎭</span>
+          <span class="theme-filter-title">分类提示（真伪难辨）</span>
+        </div>
+        
+        {themeFilterInfo().displayTheme && (
+          <div class="theme-filter-content">
+            <div class="theme-filter-suggestion">
+              <span class="suggestion-label">系统猜测：</span>
+              <span class="suggestion-theme-icon">{themeFilterInfo().displayTheme?.icon}</span>
+              <span class="suggestion-theme-title">{themeFilterInfo().displayTheme?.title}</span>
+              <span class="suggestion-theme-name">（{themeFilterInfo().displayTheme?.theme}）</span>
+            </div>
+            
+            {!themeFilterInfo().usedThisRound && isPlaying() && (
+              <div class="theme-filter-actions">
+                <button 
+                  class="theme-filter-btn activate-btn"
+                  onClick={() => activateThemeFilter()}
+                  disabled={themeFilterInfo().usedThisRound || !isPlaying()}
+                >
+                  启用此分类提示
+                  <span class="btn-cost">
+                    （-{themeFilterInfo().activationCost.timePenalty}s / -{themeFilterInfo().activationCost.scorePenalty}分）
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {themeFilterInfo().usedThisRound && isPlaying() && themeFilterInfo().judgment === null && (
+              <div class="theme-filter-judgment">
+                <div class="judgment-prompt">⚠️ 请判断此分类提示的真伪：</div>
+                <div class="judgment-buttons">
+                  <button 
+                    class="judgment-btn trust-btn"
+                    onClick={() => judgeThemeFilter('trusted')}
+                  >
+                    ✅ 信任此提示
+                  </button>
+                  <button 
+                    class="judgment-btn distrust-btn"
+                    onClick={() => judgeThemeFilter('distrusted')}
+                  >
+                    ❌ 怀疑此提示
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {themeFilterInfo().usedThisRound && themeFilterInfo().judgment !== null && (
+              <div class={`judgment-result ${themeFilterInfo().judgment}`}>
+                {themeFilterInfo().judgment === 'trusted' ? '✅ 你选择了信任此提示' : '❌ 你选择了怀疑此提示'}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div class="theme-filter-footer">
+          <span class="hint-text">💡 提示可能为真也可能为假，请结合线索判断！</span>
+        </div>
+      </div>
+
       {showWrongWarning() && (
         <div class={`penalty-warning-banner penalty-banner-${showWrongWarning()}`}>
           <div class="penalty-warning-title">

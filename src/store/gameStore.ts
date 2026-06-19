@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, CLUE_TEMPLATES } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -113,6 +113,17 @@ const initialStore: GameStore = {
   },
   roundDetails: [],
   currentRoundWrongPicks: [],
+  themeFilter: {
+    active: false,
+    displayThemeId: null,
+    isGenuine: false,
+    usedThisRound: false,
+    judgment: null,
+    activationCost: {
+      timePenalty: 5,
+      scorePenalty: 100,
+    },
+  },
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -136,6 +147,8 @@ export const [themeHintsUsed, setThemeHintsUsed] = createSignal(0);
 export const [showWrongWarning, setShowWrongWarning] = createSignal<PenaltyLevel | null>(null);
 export const [lastPenaltyInfo, setLastPenaltyInfo] = createSignal<WrongPenaltyEvent | null>(null);
 export const [achievementProgress, setAchievementProgress] = createSignal<Record<string, AchievementProgress>>(getAllAchievementProgress());
+export const [themeFilterResult, setThemeFilterResult] = createSignal<ThemeFilterResult | null>(null);
+export const [showThemeFilterHint, setShowThemeFilterHint] = createSignal(false);
 
 let timerInterval: number | null = null;
 
@@ -652,6 +665,186 @@ const setupRound = (book: Book) => {
 
   setTargetBook(book);
   setRoundStartTime(Date.now());
+  setThemeFilterResult(null);
+
+  initializeThemeFilterForBook(book);
+};
+
+const initializeThemeFilterForBook = (book: Book) => {
+  const state = gameState();
+
+  const genuineChance = Math.max(0.3, 0.7 - (['easy', 'normal', 'hard', 'expert', 'master'].indexOf(state.difficultyLevel) * 0.1));
+  const isGenuine = Math.random() < genuineChance;
+
+  let displayThemeId: string | null = null;
+  const bookThemes = getThemesForBook(book.id);
+
+  if (isGenuine && bookThemes.length > 0) {
+    const selectedTheme = bookThemes[Math.floor(Math.random() * bookThemes.length)];
+    displayThemeId = selectedTheme.id;
+  } else {
+    const fakeThemes = THEMES.filter(t => !bookThemes.some(bt => bt.id === t.id));
+    if (fakeThemes.length > 0) {
+      const selectedFakeTheme = fakeThemes[Math.floor(Math.random() * fakeThemes.length)];
+      displayThemeId = selectedFakeTheme.id;
+    } else if (bookThemes.length > 0) {
+      displayThemeId = bookThemes[0].id;
+    }
+  }
+
+  const costMultiplier = ['easy', 'normal', 'hard', 'expert', 'master'].indexOf(state.difficultyLevel) + 1;
+
+  setGameState(prev => ({
+    ...prev,
+    themeFilter: {
+      active: false,
+      displayThemeId,
+      isGenuine,
+      usedThisRound: false,
+      judgment: null,
+      activationCost: {
+        timePenalty: Math.floor(3 + costMultiplier * 1),
+        scorePenalty: Math.floor(50 + costMultiplier * 30),
+      },
+    },
+  }));
+};
+
+export const getThemeFilterInfo = () => {
+  const state = gameState();
+  const tf = state.themeFilter;
+  const displayTheme = tf.displayThemeId ? getThemeById(tf.displayThemeId) : null;
+  return {
+    ...tf,
+    displayTheme,
+  };
+};
+
+export const activateThemeFilter = () => {
+  const state = gameState();
+  if (state.state !== 'playing') return false;
+  if (state.themeFilter.active || state.themeFilter.usedThisRound) return false;
+  if (state.themeFilter.displayThemeId === null) return false;
+
+  const cost = state.themeFilter.activationCost;
+
+  setGameState(prev => ({
+    ...prev,
+    timeRemaining: Math.max(prev.timeRemaining - cost.timePenalty, 0),
+    score: Math.max(prev.score - cost.scorePenalty, 0),
+    themeFilter: {
+      ...prev.themeFilter,
+      active: true,
+      usedThisRound: true,
+    },
+  }));
+
+  setShowThemeFilterHint(true);
+  setPausableTimeout('themeFilterHint', () => setShowThemeFilterHint(false), 3000);
+
+  return true;
+};
+
+export const judgeThemeFilter = (judgment: ThemeFilterJudgment) => {
+  const state = gameState();
+  if (state.state !== 'playing') return;
+  if (!state.themeFilter.usedThisRound) return;
+  if (state.themeFilter.judgment !== null) return;
+
+  setGameState(prev => ({
+    ...prev,
+    themeFilter: {
+      ...prev.themeFilter,
+      judgment,
+    },
+  }));
+};
+
+const calculateThemeFilterCompensation = (): ThemeFilterResult => {
+  const state = gameState();
+  const tf = state.themeFilter;
+  const diffLevel = ['easy', 'normal', 'hard', 'expert', 'master'].indexOf(state.difficultyLevel);
+
+  if (!tf.usedThisRound) {
+    return {
+      judgmentCorrect: true,
+      compensationScore: Math.floor(80 + diffLevel * 40),
+      bonusMultiplier: 1 + diffLevel * 0.05,
+      details: `谨慎判断，不使用分类提示 +${Math.floor(80 + diffLevel * 40)}分`,
+    };
+  }
+
+  if (tf.judgment === null) {
+    return {
+      judgmentCorrect: false,
+      compensationScore: -tf.activationCost.scorePenalty,
+      bonusMultiplier: 0.9,
+      details: `使用但未判断真伪，扣除启用成本`,
+    };
+  }
+
+  const judgedCorrect = (tf.judgment === 'trusted' && tf.isGenuine) ||
+                       (tf.judgment === 'distrusted' && !tf.isGenuine);
+
+  if (judgedCorrect) {
+    const bonusScore = Math.floor(150 + diffLevel * 80);
+    const bonusMult = 1 + 0.1 + diffLevel * 0.08;
+    return {
+      judgmentCorrect: true,
+      compensationScore: bonusScore,
+      bonusMultiplier: bonusMult,
+      details: `正确判断真伪！+${bonusScore}分，得分倍率 x${bonusMult.toFixed(2)}`,
+    };
+  } else {
+    const penaltyScore = Math.floor(100 + diffLevel * 50);
+    return {
+      judgmentCorrect: false,
+      compensationScore: -penaltyScore,
+      bonusMultiplier: 0.85,
+      details: `判断错误，被干扰！-${penaltyScore}分，得分倍率 x0.85`,
+    };
+  }
+};
+
+export const getThemeFilterDifficultyModifier = (): { scoreMultiplier: number; description: string } => {
+  const state = gameState();
+  const tf = state.themeFilter;
+
+  if (!tf.usedThisRound) {
+    return {
+      scoreMultiplier: 1.1,
+      description: '未使用分类提示，难度加成 +10%',
+    };
+  }
+
+  if (tf.judgment === null) {
+    return {
+      scoreMultiplier: 0.95,
+      description: '使用但未判断真伪，难度减免 -5%',
+    };
+  }
+
+  const judgedCorrect = (tf.judgment === 'trusted' && tf.isGenuine) ||
+                       (tf.judgment === 'distrusted' && !tf.isGenuine);
+
+  if (judgedCorrect) {
+    if (tf.isGenuine) {
+      return {
+        scoreMultiplier: 0.85,
+        description: '正确信任真实提示，难度减免 -15%',
+      };
+    } else {
+      return {
+        scoreMultiplier: 1.2,
+        description: '正确识破虚假提示，难度加成 +20%',
+      };
+    }
+  } else {
+    return {
+      scoreMultiplier: 0.7,
+      description: '判断错误被干扰，难度减免 -30%',
+    };
+  }
 };
 
 export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: DifficultyMode) => {
@@ -2245,8 +2438,18 @@ export const selectBookWithRarity = (bookId: string): boolean => {
     
     const baseScoreWithRarity = Math.floor(baseScore * rarityMultiplier);
     
-    const streakResult = handleStreakOnSuccess(baseScoreWithRarity);
-    const totalScore = baseScoreWithRarity + streakResult.streakBonus;
+    const themeFilterResultData = calculateThemeFilterCompensation();
+    setThemeFilterResult(themeFilterResultData);
+
+    const diffModifier = getThemeFilterDifficultyModifier();
+    const scoreAfterThemeFilter = Math.floor(
+      (baseScoreWithRarity + themeFilterResultData.compensationScore) *
+      themeFilterResultData.bonusMultiplier *
+      diffModifier.scoreMultiplier
+    );
+
+    const streakResult = handleStreakOnSuccess(Math.max(scoreAfterThemeFilter, 100));
+    const totalScore = streakResult.streakBonus + Math.max(scoreAfterThemeFilter, 100);
     const newStreakCount = state.streak.currentStreak + 1;
     const newTitleId = streakResult.newTitle || state.streak.currentTitleId;
     const bestStreak = Math.max(state.streak.bestStreak, newStreakCount);
@@ -2273,6 +2476,15 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       scoreEarned: totalScore,
       unlockedClueTypes: [],
       wrongPicks: state.currentRoundWrongPicks,
+      themeFilter: {
+        used: state.themeFilter.usedThisRound,
+        displayThemeId: state.themeFilter.displayThemeId,
+        isGenuine: state.themeFilter.isGenuine,
+        judgment: state.themeFilter.judgment,
+        judgmentCorrect: themeFilterResultData.judgmentCorrect,
+        compensationScore: themeFilterResultData.compensationScore,
+        bonusMultiplier: themeFilterResultData.bonusMultiplier,
+      },
     };
 
     if (state.currentThemeId) {

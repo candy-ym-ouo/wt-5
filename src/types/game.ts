@@ -316,6 +316,15 @@ export interface RoundDetail {
     timestamp: number;
     penalty: WrongPenaltyEvent | null;
   }[];
+  themeFilter?: {
+    used: boolean;
+    displayThemeId: string | null;
+    isGenuine: boolean;
+    judgment: ThemeFilterJudgment;
+    judgmentCorrect: boolean;
+    compensationScore: number;
+    bonusMultiplier: number;
+  };
 }
 
 export interface GameReplayData {
@@ -357,6 +366,27 @@ export interface GameReplayData {
   rank?: number;
   seasonId?: string;
   weekNumber?: number;
+}
+
+export type ThemeFilterJudgment = 'trusted' | 'distrusted' | null;
+
+export interface ThemeFilterState {
+  active: boolean;
+  displayThemeId: string | null;
+  isGenuine: boolean;
+  usedThisRound: boolean;
+  judgment: ThemeFilterJudgment;
+  activationCost: {
+    timePenalty: number;
+    scorePenalty: number;
+  };
+}
+
+export interface ThemeFilterResult {
+  judgmentCorrect: boolean;
+  compensationScore: number;
+  bonusMultiplier: number;
+  details: string;
 }
 
 export interface GameStore {
@@ -402,4 +432,5 @@ export interface GameStore {
     timestamp: number;
     penalty: WrongPenaltyEvent | null;
   }[];
+  themeFilter: ThemeFilterState;
 }
