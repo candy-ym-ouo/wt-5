@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, CLUE_TEMPLATES } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -19,6 +19,8 @@ import {
 import {
   getUnlockedAchievements,
   saveUnlockedAchievements,
+  getAllAchievementProgress,
+  saveAllAchievementProgress,
   incrementGamesPlayed,
   getGamesPlayed,
   getChapterProgress,
@@ -38,6 +40,10 @@ import {
   getSavedStreak,
   saveStreak,
   clearSavedStreak,
+  saveGameReplay,
+  getCurrentSeason,
+  getCurrentWeekNumber,
+  getPersonalBestRank,
 } from '../utils/storage';
 import { THEMES, getThemeById, selectBookByTheme, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
 import {
@@ -105,6 +111,8 @@ const initialStore: GameStore = {
     penaltyHistory: [],
     maxConsecutiveWrong: 0,
   },
+  roundDetails: [],
+  currentRoundWrongPicks: [],
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -114,6 +122,9 @@ export const [showAchievementPopup, setShowAchievementPopup] = createSignal<stri
 export const [lastFindTime, setLastFindTime] = createSignal(0);
 export const [roundStartTime, setRoundStartTime] = createSignal(0);
 export const [foundGenres, setFoundGenres] = createSignal<string[]>([]);
+export const [gameStartTime, setGameStartTime] = createSignal(0);
+export const [lastRoundScore, setLastRoundScore] = createSignal(0);
+export const [lastRoundStreakBonus, setLastRoundStreakBonus] = createSignal(0);
 
 runMigrations();
 export const [gamesPlayed, setGamesPlayed] = createSignal(getGamesPlayed());
@@ -124,6 +135,7 @@ export const [showThemeRewardPopup, setShowThemeRewardPopup] = createSignal<stri
 export const [themeHintsUsed, setThemeHintsUsed] = createSignal(0);
 export const [showWrongWarning, setShowWrongWarning] = createSignal<PenaltyLevel | null>(null);
 export const [lastPenaltyInfo, setLastPenaltyInfo] = createSignal<WrongPenaltyEvent | null>(null);
+export const [achievementProgress, setAchievementProgress] = createSignal<Record<string, AchievementProgress>>(getAllAchievementProgress());
 
 let timerInterval: number | null = null;
 
@@ -207,83 +219,181 @@ export const setDifficulty = (level: DifficultyLevel, mode: DifficultyMode = 'dy
   }));
 };
 
+const updateProgressiveAchievement = (
+  achievementId: string,
+  progressValue: number
+): { newStages: string[]; completed: boolean } => {
+  const achievement = ACHIEVEMENTS.find(a => a.id === achievementId);
+  if (!achievement || achievement.type !== 'progressive' || !achievement.stages) {
+    return { newStages: [], completed: false };
+  }
+
+  const allProgress = achievementProgress();
+  let progress = allProgress[achievementId] || {
+    achievementId,
+    currentProgress: 0,
+    unlockedStages: [],
+    stageUnlockTimes: {},
+  };
+
+  const newProgress = Math.min(progressValue, achievement.maxProgress || progressValue);
+  if (newProgress <= progress.currentProgress) {
+    return { newStages: [], completed: false };
+  }
+
+  const newUnlockedStages: string[] = [];
+  const now = Date.now();
+  const stageUnlockTimes = { ...(progress.stageUnlockTimes || {}) };
+
+  for (const stage of achievement.stages) {
+    if (newProgress >= stage.threshold && !progress.unlockedStages.includes(stage.id)) {
+      newUnlockedStages.push(stage.id);
+      stageUnlockTimes[stage.id] = now;
+    }
+  }
+
+  const isCompleted = achievement.stages.length > 0 &&
+    newProgress >= achievement.stages[achievement.stages.length - 1].threshold;
+
+  const updatedProgress: AchievementProgress = {
+    ...progress,
+    currentProgress: newProgress,
+    unlockedStages: [...progress.unlockedStages, ...newUnlockedStages],
+    stageUnlockTimes,
+    unlockedAt: progress.unlockedAt || (newUnlockedStages.length > 0 ? now : undefined),
+    completedAt: isCompleted && !progress.completedAt ? now : progress.completedAt,
+  };
+
+  const newAllProgress = { ...allProgress, [achievementId]: updatedProgress };
+  setAchievementProgress(newAllProgress);
+  saveAllAchievementProgress(newAllProgress);
+
+  return { newStages: newUnlockedStages, completed: isCompleted };
+};
+
+const unlockSingleAchievement = (achievementId: string): boolean => {
+  const state = gameState();
+  if (state.unlockedAchievements.includes(achievementId)) {
+    return false;
+  }
+
+  const now = Date.now();
+  const allProgress = achievementProgress();
+  const progress: AchievementProgress = {
+    achievementId,
+    currentProgress: 1,
+    unlockedStages: [],
+    unlockedAt: now,
+    completedAt: now,
+  };
+
+  const newAllProgress = { ...allProgress, [achievementId]: progress };
+  setAchievementProgress(newAllProgress);
+  saveAllAchievementProgress(newAllProgress);
+
+  const newUnlocked = [...state.unlockedAchievements, achievementId];
+  setGameState(prev => ({ ...prev, unlockedAchievements: newUnlocked }));
+  saveUnlockedAchievements(newUnlocked);
+
+  return true;
+};
+
 export const checkAchievements = () => {
   const state = gameState();
   const unlocked = [...state.unlockedAchievements];
   let newAchievement: string | null = null;
 
   if (state.foundBooks.length >= 1 && !unlocked.includes('first_book')) {
-    unlocked.push('first_book');
-    newAchievement = 'first_book';
+    if (unlockSingleAchievement('first_book')) {
+      newAchievement = 'first_book';
+    }
   }
 
-  if (state.foundBooks.length >= 5 && !unlocked.includes('bookworm')) {
-    unlocked.push('bookworm');
+  const pb = getPersonalBest();
+  const bookwormResult = updateProgressiveAchievement('bookworm', pb.totalBooksFound);
+  if (bookwormResult.newStages.length > 0 && !unlocked.includes('bookworm')) {
+    const newUnlocked = [...unlocked, 'bookworm'];
+    setGameState(prev => ({ ...prev, unlockedAchievements: newUnlocked }));
+    saveUnlockedAchievements(newUnlocked);
     newAchievement = 'bookworm';
   }
 
   if (lastFindTime() <= 30 && lastFindTime() > 0 && !unlocked.includes('speed_reader')) {
-    unlocked.push('speed_reader');
-    newAchievement = 'speed_reader';
+    if (unlockSingleAchievement('speed_reader')) {
+      newAchievement = 'speed_reader';
+    }
   }
 
   if (state.hintsUsed === 0 && 
       state.foundBooks.length >= 1 && 
       !hasUsedAnyPowerUp(state.powerUps.powerUpsUsedTotal) && 
       !unlocked.includes('no_hints')) {
-    unlocked.push('no_hints');
-    newAchievement = 'no_hints';
+    if (unlockSingleAchievement('no_hints')) {
+      newAchievement = 'no_hints';
+    }
   }
 
   const allCluesUnlocked = currentClues().every(c => c.unlocked);
   if (allCluesUnlocked && state.foundBooks.length > 0 && !unlocked.includes('clue_collector')) {
-    unlocked.push('clue_collector');
-    newAchievement = 'clue_collector';
+    if (unlockSingleAchievement('clue_collector')) {
+      newAchievement = 'clue_collector';
+    }
   }
 
   if (state.foundBooks.length >= 3 && !unlocked.includes('perfect_round')) {
-    unlocked.push('perfect_round');
-    newAchievement = 'perfect_round';
+    if (unlockSingleAchievement('perfect_round')) {
+      newAchievement = 'perfect_round';
+    }
   }
 
   if (state.timeRemaining > 60 && state.state === 'won' && !unlocked.includes('time_master')) {
-    unlocked.push('time_master');
-    newAchievement = 'time_master';
+    if (unlockSingleAchievement('time_master')) {
+      newAchievement = 'time_master';
+    }
   }
 
   if (foundGenres().includes('历史') && !unlocked.includes('history_buff')) {
-    unlocked.push('history_buff');
-    newAchievement = 'history_buff';
+    if (unlockSingleAchievement('history_buff')) {
+      newAchievement = 'history_buff';
+    }
   }
 
   if (foundGenres().includes('科幻') && !unlocked.includes('sci_fi_fan')) {
-    unlocked.push('sci_fi_fan');
-    newAchievement = 'sci_fi_fan';
+    if (unlockSingleAchievement('sci_fi_fan')) {
+      newAchievement = 'sci_fi_fan';
+    }
   }
 
-  if (gamesPlayed() >= 5 && !unlocked.includes('veteran')) {
-    unlocked.push('veteran');
+  const veteranResult = updateProgressiveAchievement('veteran', gamesPlayed());
+  if (veteranResult.newStages.length > 0 && !unlocked.includes('veteran')) {
+    const newUnlocked = [...unlocked, 'veteran'];
+    setGameState(prev => ({ ...prev, unlockedAchievements: newUnlocked }));
+    saveUnlockedAchievements(newUnlocked);
     newAchievement = 'veteran';
   }
 
   if (state.gameMode === 'chapter' && !unlocked.includes('chapter_starter')) {
-    unlocked.push('chapter_starter');
-    newAchievement = 'chapter_starter';
+    if (unlockSingleAchievement('chapter_starter')) {
+      newAchievement = 'chapter_starter';
+    }
   }
 
   if (state.difficultyLevel === 'hard' && state.foundBooks.length >= 1 && !unlocked.includes('hard_book')) {
-    unlocked.push('hard_book');
-    newAchievement = 'hard_book';
+    if (unlockSingleAchievement('hard_book')) {
+      newAchievement = 'hard_book';
+    }
   }
 
   if (state.difficultyLevel === 'expert' && state.foundBooks.length >= 1 && !unlocked.includes('expert_book')) {
-    unlocked.push('expert_book');
-    newAchievement = 'expert_book';
+    if (unlockSingleAchievement('expert_book')) {
+      newAchievement = 'expert_book';
+    }
   }
 
   if (state.difficultyLevel === 'master' && state.foundBooks.length >= 1 && !unlocked.includes('master_book')) {
-    unlocked.push('master_book');
-    newAchievement = 'master_book';
+    if (unlockSingleAchievement('master_book')) {
+      newAchievement = 'master_book';
+    }
   }
 
   if (state.difficultyHistory.length >= 3 && !unlocked.includes('difficulty_climber')) {
@@ -295,16 +405,18 @@ export const checkAchievements = () => {
       if (idx > maxLevel) maxLevel = idx;
     }
     if (maxLevel >= 2) {
-      unlocked.push('difficulty_climber');
-      newAchievement = 'difficulty_climber';
+      if (unlockSingleAchievement('difficulty_climber')) {
+        newAchievement = 'difficulty_climber';
+      }
     }
   }
 
   if (state.difficultyMode === 'dynamic' && !unlocked.includes('dynamic_adapter')) {
     const uniqueLevels = [...new Set(state.difficultyHistory)];
     if (uniqueLevels.length >= 3) {
-      unlocked.push('dynamic_adapter');
-      newAchievement = 'dynamic_adapter';
+      if (unlockSingleAchievement('dynamic_adapter')) {
+        newAchievement = 'dynamic_adapter';
+      }
     }
   }
 
@@ -313,28 +425,32 @@ export const checkAchievements = () => {
       state.foundBooks.length >= 1 && 
       !hasUsedAnyPowerUp(state.powerUps.powerUpsUsedTotal) && 
       !unlocked.includes('master_no_hints')) {
-    unlocked.push('master_no_hints');
-    newAchievement = 'master_no_hints';
+    if (unlockSingleAchievement('master_no_hints')) {
+      newAchievement = 'master_no_hints';
+    }
   }
 
   const pbFlags = isNewPersonalBest(state.score);
   if (pbFlags.score && !unlocked.includes('personal_best_score')) {
-    unlocked.push('personal_best_score');
-    newAchievement = 'personal_best_score';
+    if (unlockSingleAchievement('personal_best_score')) {
+      newAchievement = 'personal_best_score';
+    }
   }
 
-  const pb = getPersonalBest();
-  if (pb.fastestFind > 0 && pb.fastestFind < 10 && !unlocked.includes('speed_demon')) {
-    unlocked.push('speed_demon');
-    newAchievement = 'speed_demon';
+  const pb2 = getPersonalBest();
+  if (pb2.fastestFind > 0 && pb2.fastestFind < 10 && !unlocked.includes('speed_demon')) {
+    if (unlockSingleAchievement('speed_demon')) {
+      newAchievement = 'speed_demon';
+    }
   }
 
   if ((state.state === 'won' || state.state === 'lost') && 
       state.gameMode === 'classic' && 
       state.foundBooks.length >= 1 && 
       !unlocked.includes('season_starter')) {
-    unlocked.push('season_starter');
-    newAchievement = 'season_starter';
+    if (unlockSingleAchievement('season_starter')) {
+      newAchievement = 'season_starter';
+    }
   }
 
   const weeklyEntries = getWeeklyLeaderboard();
@@ -343,8 +459,9 @@ export const checkAchievements = () => {
   if (weeklyEntries.length > 0 && !unlocked.includes('weekly_champion')) {
     const topWeeklyScore = weeklyEntries[0].score;
     if (state.score >= topWeeklyScore && state.score > 0) {
-      unlocked.push('weekly_champion');
-      newAchievement = 'weekly_champion';
+      if (unlockSingleAchievement('weekly_champion')) {
+        newAchievement = 'weekly_champion';
+      }
     }
   }
 
@@ -352,54 +469,57 @@ export const checkAchievements = () => {
     const sortedSeason = [...seasonEntries].sort((a, b) => b.score - a.score);
     const top3Scores = sortedSeason.slice(0, 3).map(e => e.score);
     if (state.score > 0 && (sortedSeason.length < 3 || state.score >= top3Scores[top3Scores.length - 1])) {
-      unlocked.push('season_top3');
-      newAchievement = 'season_top3';
+      if (unlockSingleAchievement('season_top3')) {
+        newAchievement = 'season_top3';
+      }
     }
   }
 
   const usedPowerUps = state.powerUps.powerUpsUsedTotal;
   if (hasUsedAnyPowerUp(usedPowerUps) && !unlocked.includes('powerup_first')) {
-    unlocked.push('powerup_first');
-    newAchievement = 'powerup_first';
+    if (unlockSingleAchievement('powerup_first')) {
+      newAchievement = 'powerup_first';
+    }
   }
 
   if (usedPowerUps.freeHints > 0 && usedPowerUps.timePeeks > 0 && usedPowerUps.eliminateWrongs > 0 && !unlocked.includes('powerup_collector')) {
-    unlocked.push('powerup_collector');
-    newAchievement = 'powerup_collector';
+    if (unlockSingleAchievement('powerup_collector')) {
+      newAchievement = 'powerup_collector';
+    }
   }
 
   if (usedPowerUps.timePeeks >= 5 && !unlocked.includes('peek_master')) {
-    unlocked.push('peek_master');
-    newAchievement = 'peek_master';
+    if (unlockSingleAchievement('peek_master')) {
+      newAchievement = 'peek_master';
+    }
   }
 
   if (usedPowerUps.eliminateWrongs >= 5 && !unlocked.includes('elimination_expert')) {
-    unlocked.push('elimination_expert');
-    newAchievement = 'elimination_expert';
+    if (unlockSingleAchievement('elimination_expert')) {
+      newAchievement = 'elimination_expert';
+    }
   }
 
   if (usedPowerUps.freeHints >= 10 && !unlocked.includes('free_hint_saver')) {
-    unlocked.push('free_hint_saver');
-    newAchievement = 'free_hint_saver';
+    if (unlockSingleAchievement('free_hint_saver')) {
+      newAchievement = 'free_hint_saver';
+    }
   }
 
   if ((state.state === 'won' || state.state === 'lost' || state.state === 'chapter_complete') &&
       state.foundBooks.length >= 1 &&
       !hasUsedAnyPowerUp(usedPowerUps) &&
       !unlocked.includes('purist')) {
-    unlocked.push('purist');
-    newAchievement = 'purist';
+    if (unlockSingleAchievement('purist')) {
+      newAchievement = 'purist';
+    }
   }
 
-  if (unlocked.length !== state.unlockedAchievements.length) {
-    setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
-    saveUnlockedAchievements(unlocked);
-    if (newAchievement) {
-      const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
-      if (ach) {
-        setShowAchievementPopup(ach.title);
-        setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
-      }
+  if (newAchievement) {
+    const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
+    if (ach) {
+      setShowAchievementPopup(ach.title);
+      setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
     }
   }
 };
@@ -411,37 +531,22 @@ const checkStreakAchievements = (
   const unlocked = [...state.unlockedAchievements];
   let newAchievement: string | null = null;
 
-  const streakAchievements = [
-    { id: 'streak_3', min: 3 },
-    { id: 'streak_5', min: 5 },
-    { id: 'streak_8', min: 8 },
-    { id: 'streak_12', min: 12 },
-    { id: 'streak_16', min: 16 },
-    { id: 'streak_20', min: 20 },
-    { id: 'streak_30', min: 30 },
-  ];
-
-  for (const ach of streakAchievements) {
-    if (currentStreak >= ach.min && !unlocked.includes(ach.id)) {
-      unlocked.push(ach.id);
-      newAchievement = ach.id;
-    }
-  }
-
-  if (currentStreak >= 20 && !unlocked.includes('streak_master')) {
-    unlocked.push('streak_master');
+  const pb = getPersonalBest();
+  const bestStreak = Math.max(currentStreak, pb.longestStreak);
+  const streakResult = updateProgressiveAchievement('streak_master', bestStreak);
+  
+  if (streakResult.newStages.length > 0 && !unlocked.includes('streak_master')) {
+    const newUnlocked = [...unlocked, 'streak_master'];
+    setGameState(prev => ({ ...prev, unlockedAchievements: newUnlocked }));
+    saveUnlockedAchievements(newUnlocked);
     newAchievement = 'streak_master';
   }
 
-  if (unlocked.length !== state.unlockedAchievements.length) {
-    setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
-    saveUnlockedAchievements(unlocked);
-    if (newAchievement) {
-      const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
-      if (ach) {
-        setShowAchievementPopup(ach.title);
-        setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
-      }
+  if (newAchievement) {
+    const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
+    if (ach) {
+      setShowAchievementPopup(ach.title);
+      setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
     }
   }
 };
@@ -558,6 +663,7 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
   const book = selectRandomTargetByDifficulty(diffLevel, []);
   setupRound(book);
   setFoundGenres([]);
+  setGameStartTime(Date.now());
   
   const newGamesPlayed = incrementGamesPlayed();
   setGamesPlayed(newGamesPlayed);
@@ -587,6 +693,8 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
       findTimes: [],
       hintsUsedPerRound: [],
     },
+    roundDetails: [],
+    currentRoundWrongPicks: [],
     difficultyAdjustmentReason: null,
     showDifficultyChange: false,
     lastTimeBonus: 0,
@@ -607,6 +715,7 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
     const book = selectRandomTargetByDifficulty(diffLevel, []);
     setupRound(book);
     setFoundGenres([]);
+    setGameStartTime(Date.now());
     
     const newGamesPlayed = incrementGamesPlayed();
     setGamesPlayed(newGamesPlayed);
@@ -641,6 +750,8 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
         findTimes: [],
         hintsUsedPerRound: [],
       },
+      roundDetails: [],
+      currentRoundWrongPicks: [],
       difficultyAdjustmentReason: null,
       showDifficultyChange: false,
       lastTimeBonus: 0,
@@ -658,11 +769,7 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
       lastStreakBonus: 0,
     }));
 
-    const unlocked = [...gameState().unlockedAchievements];
-    if (!unlocked.includes('streak_inherit')) {
-      unlocked.push('streak_inherit');
-      setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
-      saveUnlockedAchievements(unlocked);
+    if (unlockSingleAchievement('streak_inherit')) {
       const ach = ACHIEVEMENTS.find(a => a.id === 'streak_inherit');
       if (ach) {
         setPausableTimeout('achievementPopupDelay', () => {
@@ -713,6 +820,7 @@ export const startChapterGame = (chapterId: string) => {
   setupRound(book);
   setFoundGenres([]);
   setCurrentChapterId(chapterId);
+  setGameStartTime(Date.now());
 
   const newGamesPlayed = incrementGamesPlayed();
   setGamesPlayed(newGamesPlayed);
@@ -1000,19 +1108,20 @@ const completeChapter = () => {
     }
   }
 
-  const unlocked = [...state.unlockedAchievements];
   let newAchievement: string | null = null;
 
-  if (!unlocked.includes('chapter_master')) {
-    unlocked.push('chapter_master');
-    newAchievement = 'chapter_master';
+  if (!state.unlockedAchievements.includes('chapter_master')) {
+    if (unlockSingleAchievement('chapter_master')) {
+      newAchievement = 'chapter_master';
+    }
   }
 
   if (state.chapterHintsUsed === 0 && 
       !hasUsedAnyPowerUp(state.powerUps.powerUpsUsedTotal) && 
-      !unlocked.includes('perfect_chapter')) {
-    unlocked.push('perfect_chapter');
-    newAchievement = 'perfect_chapter';
+      !state.unlockedAchievements.includes('perfect_chapter')) {
+    if (unlockSingleAchievement('perfect_chapter')) {
+      if (!newAchievement) newAchievement = 'perfect_chapter';
+    }
   }
 
   const allChapters = [
@@ -1032,34 +1141,26 @@ const completeChapter = () => {
     }
   }
   
-  if (allCompleted && !unlocked.includes('all_chapters')) {
-    unlocked.push('all_chapters');
-    newAchievement = 'all_chapters';
+  if (allCompleted && !state.unlockedAchievements.includes('all_chapters')) {
+    if (unlockSingleAchievement('all_chapters')) {
+      if (!newAchievement) newAchievement = 'all_chapters';
+    }
   }
 
-  if (unlocked.length !== state.unlockedAchievements.length) {
-    setGameState(prev => ({
-      ...prev,
-      state: 'chapter_complete',
-      chapterScore: finalScore,
-      unlockedAchievements: unlocked,
-    }));
-    saveUnlockedAchievements(unlocked);
-    if (newAchievement) {
-      const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
-      if (ach) {
-        setPausableTimeout('achievementPopupDelay', () => {
-          setShowAchievementPopup(ach.title);
-          setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
-        }, 500);
-      }
+  setGameState(prev => ({
+    ...prev,
+    state: 'chapter_complete',
+    chapterScore: finalScore,
+  }));
+
+  if (newAchievement) {
+    const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
+    if (ach) {
+      setPausableTimeout('achievementPopupDelay', () => {
+        setShowAchievementPopup(ach.title);
+        setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
+      }, 500);
     }
-  } else {
-    setGameState(prev => ({
-      ...prev,
-      state: 'chapter_complete',
-      chapterScore: finalScore,
-    }));
   }
 };
 
@@ -1114,6 +1215,7 @@ const handleWrongPenalty = (bookId: string) => {
   const book = targetBook();
   if (!book) return;
 
+  const wrongBook = BOOKS.find(b => b.id === bookId);
   const config = getDifficultyConfig(state.difficultyLevel);
   const newConsecutiveWrong = state.wrongPenalty.consecutiveWrong + 1;
   const penalty = calculatePenaltyForConsecutiveWrong(
@@ -1155,6 +1257,15 @@ const handleWrongPenalty = (bookId: string) => {
       penaltyHistory: [...prev.wrongPenalty.penaltyHistory, event],
       maxConsecutiveWrong: Math.max(prev.wrongPenalty.maxConsecutiveWrong, newConsecutiveWrong),
     },
+    currentRoundWrongPicks: [
+      ...prev.currentRoundWrongPicks,
+      {
+        bookId,
+        bookTitle: wrongBook?.title || '未知书籍',
+        timestamp: now,
+        penalty: event,
+      },
+    ],
   }));
 
   setLastPenaltyInfo(event);
@@ -1234,8 +1345,29 @@ export const selectBook = (bookId: string): boolean => {
       hintsUsedPerRound: [...state.roundStats.hintsUsedPerRound, state.hintsUsed],
     };
 
+    const clues = currentClues();
+    const unlockedClueTypes = clues.filter(c => c.unlocked).map(c => c.type);
+
     const streakResult = handleStreakOnSuccess(score);
     const totalScore = score + streakResult.streakBonus;
+
+    const roundDetail: RoundDetail = {
+      level: state.currentLevel,
+      targetBookId: book.id,
+      targetBookTitle: book.title,
+      targetBookAuthor: book.author,
+      targetBookGenre: book.genre,
+      targetBookYear: book.year,
+      rarity: book.rarity,
+      findTime,
+      hintsUsed: state.hintsUsed,
+      scoreEarned: totalScore,
+      unlockedClueTypes,
+      wrongPicks: state.currentRoundWrongPicks,
+    };
+
+    setLastRoundScore(score);
+    setLastRoundStreakBonus(streakResult.streakBonus);
     const newStreakCount = state.streak.currentStreak + 1;
     const newTitleId = streakResult.newTitle || state.streak.currentTitleId;
     const bestStreak = Math.max(state.streak.bestStreak, newStreakCount);
@@ -1262,6 +1394,8 @@ export const selectBook = (bookId: string): boolean => {
           chapterTimeUsed: prev.chapterTimeUsed + findTime,
           chapterHintsUsed: prev.chapterHintsUsed + prev.hintsUsed,
           roundStats: newRoundStats,
+          roundDetails: [...prev.roundDetails, roundDetail],
+          currentRoundWrongPicks: [],
           state: nextTaskIndex >= tasks.length ? 'chapter_complete' : 'won',
           streak: {
             ...prev.streak,
@@ -1293,23 +1427,25 @@ export const selectBook = (bookId: string): boolean => {
       }
     } else {
       setGameState(prev => ({
-        ...prev,
-        score: prev.score + totalScore,
-        foundBooks: [...prev.foundBooks, bookId],
-        consecutiveCorrect: prev.consecutiveCorrect + 1,
-        roundStats: newRoundStats,
-        state: 'won',
-        streak: {
-          ...prev.streak,
-          currentStreak: newStreakCount,
-          bestStreak,
-          bestStreakDate,
-          totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
-          currentTitleId: newTitleId,
-          streakStartTime: prev.streak.streakStartTime || Date.now(),
-        },
-        lastStreakBonus: streakResult.streakBonus,
-      }));
+          ...prev,
+          score: prev.score + totalScore,
+          foundBooks: [...prev.foundBooks, bookId],
+          consecutiveCorrect: prev.consecutiveCorrect + 1,
+          roundStats: newRoundStats,
+          roundDetails: [...prev.roundDetails, roundDetail],
+          currentRoundWrongPicks: [],
+          state: 'won',
+          streak: {
+            ...prev.streak,
+            currentStreak: newStreakCount,
+            bestStreak,
+            bestStreakDate,
+            totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+            currentTitleId: newTitleId,
+            streakStartTime: prev.streak.streakStartTime || Date.now(),
+          },
+          lastStreakBonus: streakResult.streakBonus,
+        }));
 
       if (timerInterval) clearInterval(timerInterval);
       updatePersonalBest({
@@ -1402,6 +1538,98 @@ const handleStreakOnFail = () => {
       inheritedStreak: false,
     },
   }));
+};
+
+export const generateGameReplay = (playerName?: string): GameReplayData | null => {
+  const state = gameState();
+  if (state.gameMode !== 'classic') return null;
+  if (state.roundDetails.length === 0) return null;
+
+  const config = getDifficultyConfig(state.difficultyLevel);
+  const season = getCurrentSeason();
+  const weekNum = getCurrentWeekNumber();
+  
+  const totalTimeUsed = config.gameTime - state.timeRemaining;
+  const pbFlags = isNewPersonalBest(state.score);
+  const rank = state.score > 0 ? getPersonalBestRank(state.score) : 0;
+
+  let baseScore = 0;
+  let timeBonus = 0;
+  let streakBonus = 0;
+  let rarityBonus = 0;
+  let hintPenalty = 0;
+  let wrongPenalty = state.wrongPenalty.totalScorePenalty;
+  let powerUpPenalty = 0;
+
+  for (const round of state.roundDetails) {
+    baseScore += Math.floor(round.scoreEarned * 0.6);
+    if (round.findTime < 30) {
+      timeBonus += Math.floor(round.scoreEarned * 0.15);
+    }
+    const rarityConfig = RARITY_CONFIG[round.rarity];
+    if (rarityConfig && rarityConfig.scoreMultiplier > 1) {
+      rarityBonus += Math.floor(round.scoreEarned * (rarityConfig.scoreMultiplier - 1) / rarityConfig.scoreMultiplier);
+    }
+    hintPenalty += round.hintsUsed * config.hintPenalty;
+  }
+
+  streakBonus = state.streak.totalStreakBonusScore;
+
+  const powerUpUsed = state.powerUps.powerUpsUsedTotal;
+  if (powerUpUsed.freeHints > 0) powerUpPenalty += powerUpUsed.freeHints * 10;
+  if (powerUpUsed.timePeeks > 0) powerUpPenalty += powerUpUsed.timePeeks * 15;
+  if (powerUpUsed.eliminateWrongs > 0) powerUpPenalty += powerUpUsed.eliminateWrongs * 20;
+
+  const replay: GameReplayData = {
+    id: `replay-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    playerName,
+    totalScore: state.score,
+    totalTimeUsed,
+    totalHintsUsed: state.hintsUsed,
+    booksFound: state.foundBooks.length,
+    finalLevel: state.currentLevel,
+    difficultyLevel: state.difficultyLevel,
+    difficultyMode: state.difficultyMode,
+    gameMode: state.gameMode,
+    startTime: gameStartTime(),
+    endTime: Date.now(),
+    streak: {
+      currentStreak: state.streak.currentStreak,
+      bestStreak: state.streak.bestStreak,
+    },
+    rounds: state.roundDetails,
+    wrongPenaltySummary: {
+      totalWrongPicks: state.wrongPenalty.penaltyHistory.length,
+      maxConsecutiveWrong: state.wrongPenalty.maxConsecutiveWrong,
+      totalTimePenalty: state.wrongPenalty.totalTimePenalty,
+      totalScorePenalty: state.wrongPenalty.totalScorePenalty,
+      totalHintFreezes: state.wrongPenalty.totalHintFreezes,
+    },
+    scoreBreakdown: {
+      baseScore,
+      timeBonus,
+      streakBonus,
+      rarityBonus,
+      difficultyMultiplier: config.scoreMultiplier,
+      hintPenalty,
+      wrongPenalty,
+      powerUpPenalty,
+    },
+    isPersonalBest: pbFlags.score,
+    rank,
+    seasonId: season.id,
+    weekNumber: weekNum,
+  };
+
+  return replay;
+};
+
+export const saveCurrentGameReplay = (playerName?: string): GameReplayData | null => {
+  const replay = generateGameReplay(playerName);
+  if (replay) {
+    saveGameReplay(replay);
+  }
+  return replay;
 };
 
 export const getStreakInfo = () => {
@@ -2032,6 +2260,21 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       hintsUsedPerRound: [...state.roundStats.hintsUsedPerRound, state.hintsUsed],
     };
 
+    const roundDetail: RoundDetail = {
+      level: state.currentLevel,
+      targetBookId: book.id,
+      targetBookTitle: book.title,
+      targetBookAuthor: book.author,
+      targetBookGenre: book.genre,
+      targetBookYear: book.year,
+      rarity: book.rarity,
+      findTime,
+      hintsUsed: state.hintsUsed,
+      scoreEarned: totalScore,
+      unlockedClueTypes: [],
+      wrongPicks: state.currentRoundWrongPicks,
+    };
+
     if (state.currentThemeId) {
       setThemeHintsUsed(prev => prev + state.hintsUsed);
       
@@ -2046,6 +2289,8 @@ export const selectBookWithRarity = (bookId: string): boolean => {
         themeFoundBooks: newThemeFoundBooks,
         themeScore: prev.themeScore + totalScore,
         roundStats: newRoundStats,
+        roundDetails: [...prev.roundDetails, roundDetail],
+        currentRoundWrongPicks: [],
         state: newThemeFoundBooks.length >= (theme?.requiredBooks || theme?.bookIds.length || 0) ? 'won' : 'won',
         streak: {
           ...prev.streak,
@@ -2075,23 +2320,25 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       themesForBook.forEach(t => checkThemeRewards(t.id));
     } else {
       setGameState(prev => ({
-        ...prev,
-        score: prev.score + totalScore,
-        foundBooks: [...prev.foundBooks, bookId],
-        consecutiveCorrect: prev.consecutiveCorrect + 1,
-        roundStats: newRoundStats,
-        state: 'won',
-        streak: {
-          ...prev.streak,
-          currentStreak: newStreakCount,
-          bestStreak,
-          bestStreakDate,
-          totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
-          currentTitleId: newTitleId,
-          streakStartTime: prev.streak.streakStartTime || Date.now(),
-        },
-        lastStreakBonus: streakResult.streakBonus,
-      }));
+          ...prev,
+          score: prev.score + totalScore,
+          foundBooks: [...prev.foundBooks, bookId],
+          consecutiveCorrect: prev.consecutiveCorrect + 1,
+          roundStats: newRoundStats,
+          roundDetails: [...prev.roundDetails, roundDetail],
+          currentRoundWrongPicks: [],
+          state: 'won',
+          streak: {
+            ...prev.streak,
+            currentStreak: newStreakCount,
+            bestStreak,
+            bestStreakDate,
+            totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+            currentTitleId: newTitleId,
+            streakStartTime: prev.streak.streakStartTime || Date.now(),
+          },
+          lastStreakBonus: streakResult.streakBonus,
+        }));
 
       if (timerInterval) clearInterval(timerInterval);
       updatePersonalBest({

@@ -58,14 +58,37 @@ export interface Clue {
 
 export type ClueType = 'author' | 'year' | 'genre' | 'title' | 'shelf' | 'description';
 
+export type AchievementType = 'single' | 'progressive';
+
+export interface AchievementStage {
+  id: string;
+  title: string;
+  description: string;
+  threshold: number;
+  reward?: string;
+}
+
 export interface Achievement {
   id: string;
   title: string;
   description: string;
   icon: string;
+  type: AchievementType;
   unlocked: boolean;
   unlockedAt?: number;
   condition: string;
+  stages?: AchievementStage[];
+  progressKey?: string;
+  maxProgress?: number;
+}
+
+export interface AchievementProgress {
+  achievementId: string;
+  currentProgress: number;
+  unlockedStages: string[];
+  unlockedAt?: number;
+  completedAt?: number;
+  stageUnlockTimes?: Record<string, number>;
 }
 
 export interface LeaderboardEntry {
@@ -80,6 +103,7 @@ export interface LeaderboardEntry {
   difficulty?: DifficultyLevel;
   streak?: number;
   bestStreak?: number;
+  replayId?: string;
 }
 
 export interface SeasonInfo {
@@ -274,6 +298,67 @@ export interface WrongPenaltyState {
   maxConsecutiveWrong: number;
 }
 
+export interface RoundDetail {
+  level: number;
+  targetBookId: string;
+  targetBookTitle: string;
+  targetBookAuthor: string;
+  targetBookGenre: string;
+  targetBookYear: number;
+  rarity: RarityLevel;
+  findTime: number;
+  hintsUsed: number;
+  scoreEarned: number;
+  unlockedClueTypes: ClueType[];
+  wrongPicks: {
+    bookId: string;
+    bookTitle: string;
+    timestamp: number;
+    penalty: WrongPenaltyEvent | null;
+  }[];
+}
+
+export interface GameReplayData {
+  id: string;
+  playerName?: string;
+  totalScore: number;
+  totalTimeUsed: number;
+  totalHintsUsed: number;
+  booksFound: number;
+  finalLevel: number;
+  difficultyLevel: DifficultyLevel;
+  difficultyMode: DifficultyMode;
+  gameMode: GameMode;
+  startTime: number;
+  endTime: number;
+  streak: {
+    currentStreak: number;
+    bestStreak: number;
+  };
+  rounds: RoundDetail[];
+  wrongPenaltySummary: {
+    totalWrongPicks: number;
+    maxConsecutiveWrong: number;
+    totalTimePenalty: number;
+    totalScorePenalty: number;
+    totalHintFreezes: number;
+  };
+  scoreBreakdown: {
+    baseScore: number;
+    timeBonus: number;
+    streakBonus: number;
+    rarityBonus: number;
+    difficultyMultiplier: number;
+    hintPenalty: number;
+    wrongPenalty: number;
+    powerUpPenalty: number;
+  };
+  isPersonalBest?: boolean;
+  rank?: number;
+  seasonId?: string;
+  weekNumber?: number;
+}
+
 export interface GameStore {
   state: GameState;
   score: number;
@@ -310,4 +395,11 @@ export interface GameStore {
   showStreakPopup: boolean;
   lastStreakBonus: number;
   wrongPenalty: WrongPenaltyState;
+  roundDetails: RoundDetail[];
+  currentRoundWrongPicks: {
+    bookId: string;
+    bookTitle: string;
+    timestamp: number;
+    penalty: WrongPenaltyEvent | null;
+  }[];
 }

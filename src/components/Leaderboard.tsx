@@ -1,5 +1,5 @@
 import { createSignal, createMemo, For } from 'solid-js';
-import type { LeaderboardTab } from '../types/game';
+import type { LeaderboardTab, GameReplayData } from '../types/game';
 import {
   getLeaderboard,
   saveLeaderboardEntry,
@@ -8,9 +8,12 @@ import {
   getPersonalBest,
   getCurrentSeason,
   getCurrentWeekNumber,
+  getGameReplayById,
+  getAllGameReplays,
 } from '../utils/storage';
 import { ACHIEVEMENTS } from '../data/achievements';
-import { gameState, checkAchievements } from '../store/gameStore';
+import { gameState, checkAchievements, saveCurrentGameReplay } from '../store/gameStore';
+import PostGameReview from './PostGameReview';
 
 interface LeaderboardProps {
   onClose: () => void;
@@ -22,6 +25,8 @@ export default function Leaderboard(props: LeaderboardProps) {
   const [playerName, setPlayerName] = createSignal('');
   const [hasSubmitted, setHasSubmitted] = createSignal(false);
   const [, setLeaderboardVersion] = createSignal(0);
+  const [showReplay, setShowReplay] = createSignal<GameReplayData | null>(null);
+  const [replaySaved, setReplaySaved] = createSignal(false);
   const state = createMemo(() => gameState());
   const currentScore = createMemo(() => state().score);
   const unlockedIds = createMemo(() => state().unlockedAchievements);
@@ -59,9 +64,29 @@ export default function Leaderboard(props: LeaderboardProps) {
     };
 
     saveLeaderboardEntry(entry);
+    saveCurrentGameReplay(playerName().trim());
+    setReplaySaved(true);
     setLeaderboardVersion(v => v + 1);
     setHasSubmitted(true);
     setTimeout(() => checkAchievements(), 0);
+  };
+
+  const handleViewReplay = (score: number) => {
+    const replay = getGameReplayByScore(score);
+    if (replay) {
+      setShowReplay(replay);
+    }
+  };
+
+  const handleViewLastReplay = () => {
+    if (!replaySaved() && currentScore() > 0) {
+      saveCurrentGameReplay();
+      setReplaySaved(true);
+    }
+    const replays = getAllGameReplays();
+    if (replays.length > 0) {
+      setShowReplay(replays[0]);
+    }
   };
 
   const formatDate = (timestamp: number): string => {
@@ -130,6 +155,16 @@ export default function Leaderboard(props: LeaderboardProps) {
                     </span>
                     <span class="leaderboard-meta">{formatDate(entry.date)}</span>
                     <span class="leaderboard-score">{entry.score} 分</span>
+                    <button 
+                      class="leaderboard-replay-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewReplay(entry.score);
+                      }}
+                      title="回看对局"
+                    >
+                      📋 回看
+                    </button>
                   </div>
                 )}
               </For>
@@ -152,7 +187,16 @@ export default function Leaderboard(props: LeaderboardProps) {
                   onInput={(e) => setPlayerName(e.currentTarget.value)}
                   maxlength={12}
                 />
-                <button class="modal-button" onClick={handleSubmit}>提交分数</button>
+                <div class="submit-actions">
+                  <button class="modal-button" onClick={handleSubmit}>提交分数</button>
+                  <button class="modal-button secondary" onClick={handleViewLastReplay}>📋 查看复盘</button>
+                </div>
+              </div>
+            )}
+
+            {hasSubmitted() && (
+              <div class="section-sm">
+                <button class="modal-button secondary" onClick={handleViewLastReplay}>📋 查看本局复盘</button>
               </div>
             )}
           </>
@@ -178,6 +222,16 @@ export default function Leaderboard(props: LeaderboardProps) {
                       W{entry.weekNumber ?? '-'}
                     </span>
                     <span class="leaderboard-score">{entry.score} 分</span>
+                    <button 
+                      class="leaderboard-replay-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleViewReplay(entry.score);
+                      }}
+                      title="回看对局"
+                    >
+                      📋 回看
+                    </button>
                   </div>
                 )}
               </For>
@@ -200,7 +254,16 @@ export default function Leaderboard(props: LeaderboardProps) {
                   onInput={(e) => setPlayerName(e.currentTarget.value)}
                   maxlength={12}
                 />
-                <button class="modal-button" onClick={handleSubmit}>提交分数</button>
+                <div class="submit-actions">
+                  <button class="modal-button" onClick={handleSubmit}>提交分数</button>
+                  <button class="modal-button secondary" onClick={handleViewLastReplay}>📋 查看复盘</button>
+                </div>
+              </div>
+            )}
+
+            {hasSubmitted() && (
+              <div class="section-sm">
+                <button class="modal-button secondary" onClick={handleViewLastReplay}>📋 查看本局复盘</button>
               </div>
             )}
           </>
@@ -307,6 +370,13 @@ export default function Leaderboard(props: LeaderboardProps) {
           关闭
         </button>
       </div>
+
+      {showReplay() && (
+        <PostGameReview
+          replay={showReplay()!}
+          onClose={() => setShowReplay(null)}
+        />
+      )}
     </div>
   );
 }

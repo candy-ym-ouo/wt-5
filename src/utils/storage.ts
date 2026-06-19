@@ -1,7 +1,8 @@
-import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress } from '../types/game';
+import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress } from '../types/game';
 
 export const LEADERBOARD_KEY = 'old_bookstore_leaderboard';
 export const ACHIEVEMENTS_KEY = 'old_bookstore_achievements';
+export const ACHIEVEMENTS_PROGRESS_KEY = 'old_bookstore_achievements_progress';
 export const GAME_STATS_KEY = 'old_bookstore_stats';
 export const CHAPTER_PROGRESS_KEY = 'old_bookstore_chapter_progress';
 export const CURRENT_CHAPTER_KEY = 'old_bookstore_current_chapter';
@@ -12,8 +13,10 @@ export const THEME_PROGRESS_KEY = 'old_bookstore_theme_progress';
 export const THEME_REWARDS_KEY = 'old_bookstore_theme_rewards';
 export const CURRENT_THEME_KEY = 'old_bookstore_current_theme';
 export const STREAK_KEY = 'old_bookstore_streak';
+export const GAME_REPLAY_KEY = 'old_bookstore_replays';
+export const LAST_GAME_REPLAY_KEY = 'old_bookstore_last_replay';
 
-const CURRENT_STORAGE_VERSION = 3;
+const CURRENT_STORAGE_VERSION = 4;
 
 function getWeekNumber(date: number): number {
   const d = new Date(date);
@@ -218,6 +221,30 @@ export const saveUnlockedAchievements = (ids: string[]): void => {
   localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(ids));
 };
 
+export const getAllAchievementProgress = (): Record<string, AchievementProgress> => {
+  try {
+    const data = localStorage.getItem(ACHIEVEMENTS_PROGRESS_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const getAchievementProgress = (achievementId: string): AchievementProgress | null => {
+  const allProgress = getAllAchievementProgress();
+  return allProgress[achievementId] || null;
+};
+
+export const saveAchievementProgress = (progress: AchievementProgress): void => {
+  const allProgress = getAllAchievementProgress();
+  allProgress[progress.achievementId] = progress;
+  localStorage.setItem(ACHIEVEMENTS_PROGRESS_KEY, JSON.stringify(allProgress));
+};
+
+export const saveAllAchievementProgress = (progress: Record<string, AchievementProgress>): void => {
+  localStorage.setItem(ACHIEVEMENTS_PROGRESS_KEY, JSON.stringify(progress));
+};
+
 export const getGamesPlayed = (): number => {
   try {
     const data = localStorage.getItem(GAME_STATS_KEY);
@@ -352,6 +379,31 @@ function migrateFromV1ToV2(): void {
   } catch {}
 }
 
+function migrateFromV3ToV4(): void {
+  try {
+    const existingProgress = localStorage.getItem(ACHIEVEMENTS_PROGRESS_KEY);
+    if (existingProgress) return;
+
+    const unlockedIds = getUnlockedAchievements();
+    if (unlockedIds.length === 0) return;
+
+    const progress: Record<string, AchievementProgress> = {};
+    const now = Date.now();
+
+    for (const id of unlockedIds) {
+      progress[id] = {
+        achievementId: id,
+        currentProgress: 1,
+        unlockedStages: [],
+        unlockedAt: now,
+        completedAt: now,
+      };
+    }
+
+    saveAllAchievementProgress(progress);
+  } catch {}
+}
+
 export function runMigrations(): void {
   try {
     const versionStr = localStorage.getItem(STORAGE_VERSION_KEY);
@@ -359,6 +411,10 @@ export function runMigrations(): void {
 
     if (version < 2) {
       migrateFromV1ToV2();
+    }
+
+    if (version < 4) {
+      migrateFromV3ToV4();
     }
 
     localStorage.setItem(STORAGE_VERSION_KEY, String(CURRENT_STORAGE_VERSION));
@@ -460,4 +516,49 @@ export const saveStreak = (streak: SavedStreakState): void => {
 
 export const clearSavedStreak = (): void => {
   localStorage.removeItem(STREAK_KEY);
+};
+
+export const saveGameReplay = (replay: GameReplayData): void => {
+  try {
+    localStorage.setItem(LAST_GAME_REPLAY_KEY, JSON.stringify(replay));
+    
+    const allReplays = getAllGameReplays();
+    allReplays.push(replay);
+    allReplays.sort((a, b) => b.totalScore - a.totalScore);
+    const top20 = allReplays.slice(0, 20);
+    localStorage.setItem(GAME_REPLAY_KEY, JSON.stringify(top20));
+  } catch {}
+};
+
+export const getLastGameReplay = (): GameReplayData | null => {
+  try {
+    const data = localStorage.getItem(LAST_GAME_REPLAY_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch {
+    return null;
+  }
+};
+
+export const getAllGameReplays = (): GameReplayData[] => {
+  try {
+    const data = localStorage.getItem(GAME_REPLAY_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const getGameReplayById = (id: string): GameReplayData | null => {
+  const all = getAllGameReplays();
+  return all.find(r => r.id === id) || null;
+};
+
+export const getGameReplayByScore = (score: number): GameReplayData | null => {
+  const all = getAllGameReplays();
+  return all.find(r => r.totalScore === score) || null;
+};
+
+export const clearGameReplays = (): void => {
+  localStorage.removeItem(GAME_REPLAY_KEY);
+  localStorage.removeItem(LAST_GAME_REPLAY_KEY);
 };
