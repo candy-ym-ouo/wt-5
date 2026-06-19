@@ -8,7 +8,7 @@ import GameModal from './components/GameModal';
 import Leaderboard from './components/Leaderboard';
 import ChapterProgress from './components/ChapterProgress';
 import StreakDisplay from './components/StreakDisplay';
-import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame } from './store/gameStore';
+import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode } from './store/gameStore';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
 
@@ -31,6 +31,8 @@ export default function App() {
   const isDynamicMode = createMemo(() => state().difficultyMode === 'dynamic');
   const streakInfo = createMemo(() => getStreakInfo());
   const hasActiveStreak = createMemo(() => streakInfo().currentStreak > 0 && isPlaying());
+  const dailyInfo = createMemo(() => getDailyChallengeInfo());
+  const isDailyMode = createMemo(() => isDailyChallengeMode());
 
   return (
     <div class="game-container">
@@ -45,6 +47,11 @@ export default function App() {
           {isThemeMode() && currentTheme() && (
             <span class="theme-header-badge">
               {currentTheme()?.theme.icon} {currentTheme()?.theme.title}
+            </span>
+          )}
+          {isDailyMode() && (
+            <span class="daily-header-badge">
+              📆 每日挑战
             </span>
           )}
           {!isChapterMode() && !isThemeMode() && isPlaying() && (
@@ -148,6 +155,44 @@ export default function App() {
                 </div>
                 {currentBook() && (
                   <div class="theme-book-rarity">
+                    <span class="rarity-label">目标稀有度:</span>
+                    <span 
+                      class="rarity-value"
+                      style={{ color: RARITY_CONFIG[currentBook()!.rarity].color }}
+                    >
+                      {RARITY_CONFIG[currentBook()!.rarity].icon} {RARITY_CONFIG[currentBook()!.rarity].name}
+                      (x{RARITY_CONFIG[currentBook()!.rarity].scoreMultiplier})
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isDailyMode() && dailyInfo() && (
+            <div class="sidebar-section daily-section">
+              <div class="section-title">
+                <span>📆</span>
+                <span>每日挑战进度</span>
+              </div>
+              <div class="daily-progress-card">
+                <div class="daily-card-title">今日挑战</div>
+                <div class="daily-progress-bar">
+                  <div 
+                    class="daily-progress-fill"
+                    style={{ width: `${dailyInfo()?.percent}%` }}
+                  />
+                </div>
+                <div class="daily-progress-info">
+                  <span class="daily-progress-text">
+                    {dailyInfo()?.progress} / {dailyInfo()?.total} 本书籍
+                  </span>
+                  <span class="daily-progress-score">
+                    得分: {state().score}
+                  </span>
+                </div>
+                {currentBook() && (
+                  <div class="daily-book-rarity">
                     <span class="rarity-label">目标稀有度:</span>
                     <span 
                       class="rarity-value"

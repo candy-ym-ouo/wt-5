@@ -10,10 +10,13 @@ import {
   getCurrentWeekNumber,
   getGameReplayByScore,
   getAllGameReplays,
+  getDailyLeaderboard,
+  getDailyProgress,
 } from '../utils/storage';
 import { ACHIEVEMENTS } from '../data/achievements';
-import { gameState, checkAchievements, saveCurrentGameReplay, achievementProgress } from '../store/gameStore';
+import { gameState, checkAchievements, saveCurrentGameReplay, achievementProgress, isDailyChallengeMode, submitDailyScore } from '../store/gameStore';
 import PostGameReview from './PostGameReview';
+import { getTodayDateKey, generateDailyChallenge } from '../data/dailyChallenge';
 
 interface LeaderboardProps {
   onClose: () => void;
@@ -24,7 +27,7 @@ export default function Leaderboard(props: LeaderboardProps) {
   const [activeTab, setActiveTab] = createSignal<LeaderboardTab>(props.initialTab || 'weekly');
   const [playerName, setPlayerName] = createSignal('');
   const [hasSubmitted, setHasSubmitted] = createSignal(false);
-  const [, setLeaderboardVersion] = createSignal(0);
+  const [leaderboardVersion, setLeaderboardVersion] = createSignal(0);
   const [showReplay, setShowReplay] = createSignal<GameReplayData | null>(null);
   const [replaySaved, setReplaySaved] = createSignal(false);
   const state = createMemo(() => gameState());
@@ -121,6 +124,37 @@ export default function Leaderboard(props: LeaderboardProps) {
 
   const overallProgress = createMemo(() => calculateOverallProgress());
 
+  const todayDateKey = createMemo(() => getTodayDateKey());
+  const dailyChallengeData = createMemo(() => generateDailyChallenge());
+  const dailyProgress = createMemo(() => {
+    leaderboardVersion();
+    return getDailyProgress(todayDateKey());
+  });
+  const dailyEntries = createMemo(() => {
+    leaderboardVersion();
+    return getDailyLeaderboard(todayDateKey());
+  });
+  const [dailyPlayerName, setDailyPlayerName] = createSignal('');
+  const [dailySubmitted, setDailySubmitted] = createSignal(false);
+
+  const handleDailySubmit = () => {
+    if (!dailyPlayerName().trim() || dailySubmitted()) return;
+    if (currentScore() <= 0) return;
+    
+    const success = submitDailyScore(dailyPlayerName().trim());
+    if (success) {
+      setDailySubmitted(true);
+      setLeaderboardVersion(v => v + 1);
+    }
+  };
+
+  const formatDateLong = (dateStr: string): string => {
+    const parts = dateStr.split('-');
+    return `${parseInt(parts[1])}月${parseInt(parts[2])}日`;
+  };
+
+  const isDailyMode = createMemo(() => isDailyChallengeMode());
+
   return (
     <div class="modal-overlay" onClick={props.onClose}>
       <div class="modal-content season-leaderboard-modal" onClick={(e) => e.stopPropagation()}>
@@ -130,6 +164,12 @@ export default function Leaderboard(props: LeaderboardProps) {
         </div>
 
         <div class="tabs season-tabs">
+          <button
+            class={`tab-button ${activeTab() === 'daily' ? 'active' : ''}`}
+            onClick={() => setActiveTab('daily')}
+          >
+            📆 每日挑战
+          </button>
           <button
             class={`tab-button ${activeTab() === 'weekly' ? 'active' : ''}`}
             onClick={() => setActiveTab('weekly')}
@@ -155,6 +195,91 @@ export default function Leaderboard(props: LeaderboardProps) {
             🎖️ 成就
           </button>
         </div>
+
+        {activeTab() === 'daily' && (
+          <>
+            <div class="modal-title modal-title-sm">
+              📆 {formatDateLong(todayDateKey())} 每日挑战
+            </div>
+            
+            <div class="daily-challenge-info">
+              <div class="daily-challenge-desc">
+                每日挑战包含 {dailyChallengeData().totalBooks} 本固定书籍，完成全部挑战上榜！
+              </div>
+              
+              {dailyProgress() && (
+                <div class="daily-progress-card">
+                  <div class="daily-progress-header">
+                    <span class="daily-progress-title">我的今日战绩</span>
+                    <span class={`daily-status-badge ${dailyProgress()?.completed ? 'completed' : ''}`}>
+                      {dailyProgress()?.completed ? '✓ 已完成' : '挑战中'}
+                    </span>
+                  </div>
+                  <div class="daily-progress-stats">
+                    <div class="daily-stat">
+                      <div class="daily-stat-value">{dailyProgress()?.bestScore || 0}</div>
+                      <div class="daily-stat-label">最高分</div>
+                    </div>
+                    <div class="daily-stat">
+                      <div class="daily-stat-value">{dailyProgress()?.booksFound || 0}</div>
+                      <div class="daily-stat-label">找到书籍</div>
+                    </div>
+                    <div class="daily-stat">
+                      <div class="daily-stat-value">{dailyProgress()?.attempts || 0}</div>
+                      <div class="daily-stat-label">挑战次数</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div class="modal-title modal-title-sm">🏆 每日排行榜</div>
+            <div class="leaderboard-list">
+              <For each={dailyEntries()}>
+                {(entry, index) => (
+                  <div class="leaderboard-item">
+                    <span class={`leaderboard-rank ${getRankClass(index())}`}>
+                      #{index() + 1}
+                    </span>
+                    <span class="leaderboard-name">
+                      {entry.playerName}
+                    </span>
+                    <span class="leaderboard-meta">
+                      {entry.booksFound}/{dailyChallengeData().totalBooks}本
+                    </span>
+                    <span class="leaderboard-score">{entry.score} 分</span>
+                  </div>
+                )}
+              </For>
+              {dailyEntries().length === 0 && (
+                <div class="leaderboard-empty">今日暂无记录，快来挑战吧！</div>
+              )}
+            </div>
+
+            {isDailyMode() && currentScore() > 0 && !dailySubmitted() && (
+              <div class="section-sm">
+                <div class="text-gold">你的分数：{currentScore()} 分</div>
+                <input
+                  type="text"
+                  class="input-field"
+                  placeholder="输入你的名字"
+                  value={dailyPlayerName()}
+                  onInput={(e) => setDailyPlayerName(e.currentTarget.value)}
+                  maxlength={12}
+                />
+                <div class="submit-actions">
+                  <button class="modal-button" onClick={handleDailySubmit}>提交分数</button>
+                </div>
+              </div>
+            )}
+
+            {dailySubmitted() && (
+              <div class="section-sm">
+                <div class="text-green">✓ 分数已提交到每日排行榜！</div>
+              </div>
+            )}
+          </>
+        )}
 
         {activeTab() === 'weekly' && (
           <>

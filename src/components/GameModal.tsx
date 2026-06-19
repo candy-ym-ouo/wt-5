@@ -24,6 +24,9 @@ import {
   resumeGame,
   currentClues,
   getWrongPenaltyInfo,
+  startDailyChallenge,
+  getDailyChallengeInfo,
+  isDailyChallengeMode,
 } from '../store/gameStore';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
@@ -31,8 +34,9 @@ import ThemeSelect from './ThemeSelect';
 import { getNextChapter } from '../data/chapters';
 import { DIFFICULTY_CONFIGS, DIFFICULTY_LEVELS, getDifficultyConfig } from '../data/difficulty';
 import { RARITY_CONFIG } from '../data/themes';
-import { isNewPersonalBest, getPersonalBestRank, getPersonalBest, getCurrentSeason, getCurrentWeekNumber } from '../utils/storage';
+import { isNewPersonalBest, getPersonalBestRank, getPersonalBest, getCurrentSeason, getCurrentWeekNumber, getDailyProgress, hasCompletedDailyChallenge } from '../utils/storage';
 import { getStreakTitle, STREAK_INHERIT_COST } from '../data/streaks';
+import { generateDailyChallenge, getTodayDateKey } from '../data/dailyChallenge';
 
 export default function GameModal() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
@@ -69,6 +73,12 @@ export default function GameModal() {
   const personalBestData = createMemo(() => getPersonalBest());
   const season = createMemo(() => getCurrentSeason());
   const weekNum = createMemo(() => getCurrentWeekNumber());
+  
+  const dailyChallengeData = createMemo(() => generateDailyChallenge());
+  const dailyProgress = createMemo(() => getDailyProgress(getTodayDateKey()));
+  const hasDailyCompleted = createMemo(() => hasCompletedDailyChallenge());
+  const isDailyMode = createMemo(() => isDailyChallengeMode());
+  const dailyInfo = createMemo(() => getDailyChallengeInfo());
 
   const handleSelectDifficulty = (level: DifficultyLevel) => {
     setSelectedDifficulty(level);
@@ -109,6 +119,10 @@ export default function GameModal() {
     if (currentThemeId && continueThemeGame(currentThemeId)) {
       setShowThemeSelect(false);
     }
+  };
+
+  const handleStartDailyChallenge = () => {
+    startDailyChallenge();
   };
 
   const handleNextChapter = () => {
@@ -170,7 +184,19 @@ export default function GameModal() {
               <button class="modal-button theme-btn" onClick={() => setShowThemeSelect(true)}>
                 🎯 主题挑战
               </button>
+              <button class="modal-button daily-btn" onClick={handleStartDailyChallenge}>
+                📆 每日挑战
+                {hasDailyCompleted() && <span class="daily-badge">✓</span>}
+              </button>
             </div>
+
+            {dailyProgress() && (
+              <div class="daily-mini-progress">
+                <span class="daily-mini-label">今日最佳：</span>
+                <span class="daily-mini-score">{dailyProgress()?.bestScore || 0} 分</span>
+                <span class="daily-mini-books">({dailyProgress()?.booksFound || 0}/{dailyChallengeData().totalBooks}本)</span>
+              </div>
+            )}
 
             {hasSavedProgress() && (
               <button class="modal-button continue-btn" onClick={handleContinue}>
@@ -557,6 +583,24 @@ export default function GameModal() {
               </div>
             )}
 
+            {isDailyMode() && dailyInfo() && (
+              <div class="daily-progress-summary">
+                <div class="daily-progress-label">
+                  📆 每日挑战 - 进度
+                </div>
+                <div class="daily-progress-bar">
+                  <div 
+                    class="daily-progress-fill"
+                    style={{ width: `${dailyInfo()?.percent}%` }}
+                  />
+                </div>
+                <div class="daily-progress-text">
+                  {dailyInfo()?.progress} / {dailyInfo()?.total} 本书籍完成
+                  {dailyInfo()?.isComplete && <span class="daily-complete-badge">✓ 挑战完成！</span>}
+                </div>
+              </div>
+            )}
+
             {book() && (
               <div class="book-rarity-info">
                 <span class="rarity-icon" style={{ color: RARITY_CONFIG[book()!.rarity].color }}>
@@ -572,7 +616,7 @@ export default function GameModal() {
             )}
 
             <button class="modal-button" onClick={isThemeMode() ? nextThemeRound : nextRound}>
-              {isChapterMode() ? '下一个任务' : isThemeMode() ? '下一本书籍' : '下一本书'}
+              {isChapterMode() ? '下一个任务' : isThemeMode() ? '下一本书籍' : isDailyMode() ? '下一本挑战书' : '下一本书'}
             </button>
             <button class="modal-button secondary" onClick={() => setShowLeaderboard(true)}>
               排行榜
@@ -766,6 +810,26 @@ export default function GameModal() {
               </div>
             )}
 
+            {isDailyMode() && dailyInfo() && (
+              <div class="daily-progress-summary">
+                <div class="daily-progress-label">
+                  📆 每日挑战 - 进度
+                </div>
+                <div class="daily-progress-bar">
+                  <div 
+                    class="daily-progress-fill"
+                    style={{ width: `${dailyInfo()?.percent}%` }}
+                  />
+                </div>
+                <div class="daily-progress-text">
+                  {state().foundBooks.length} / {dailyInfo()?.total} 本书籍完成
+                </div>
+                <div class="daily-best-hint">
+                  💾 今日最佳成绩：{dailyProgress()?.bestScore || 0} 分
+                </div>
+              </div>
+            )}
+
             {isChapterMode() ? (
               <>
                 <button class="modal-button" onClick={restartCurrentTask}>
@@ -773,6 +837,12 @@ export default function GameModal() {
                 </button>
                 <button class="modal-button secondary" onClick={restartChapter}>
                   🔁 重新开始章节
+                </button>
+              </>
+            ) : isDailyMode() ? (
+              <>
+                <button class="modal-button" onClick={handleStartDailyChallenge}>
+                  🔄 再挑战一次
                 </button>
               </>
             ) : (

@@ -129,7 +129,7 @@ export interface PersonalBest {
   seasonBestScores: Record<string, number>;
 }
 
-export type LeaderboardTab = 'weekly' | 'overall' | 'personal' | 'achievements';
+export type LeaderboardTab = 'weekly' | 'overall' | 'personal' | 'achievements' | 'daily';
 
 export type GameState = 'idle' | 'playing' | 'paused' | 'won' | 'lost' | 'chapter_complete';
 
@@ -201,7 +201,7 @@ export interface DifficultyAdjustmentResult {
   changed: boolean;
 }
 
-export type GameMode = 'classic' | 'chapter';
+export type GameMode = 'classic' | 'chapter' | 'daily';
 
 export type DifficultyMode = 'fixed' | 'dynamic';
 
@@ -437,4 +437,34 @@ export interface GameStore {
     penalty: WrongPenaltyEvent | null;
   }[];
   themeFilter: ThemeFilterState;
+}
+
+export interface DailyChallengeBook {
+  bookId: string;
+  order: number;
+}
+
+export interface DailyChallenge {
+  date: string;
+  books: DailyChallengeBook[];
+  totalBooks: number;
+}
+
+export interface DailyChallengeScore {
+  date: string;
+  score: number;
+  booksFound: number;
+  timeUsed: number;
+  hintsUsed: number;
+  playerName?: string;
+  timestamp: number;
+}
+
+export interface DailyChallengeProgress {
+  date: string;
+  bestScore: number;
+  bestScoreTimestamp: number;
+  booksFound: number;
+  attempts: number;
+  completed: boolean;
 }

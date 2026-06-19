@@ -2103,6 +2103,24 @@ body {
   background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 100%) !important;
 }
 
+.daily-btn {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+}
+
+.daily-btn:hover {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%) !important;
+}
+
+.daily-badge {
+  display: inline-block;
+  background: #10b981;
+  color: white;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 6px;
+}
+
 .theme-select-overlay {
   position: fixed;
   top: 0;
@@ -2224,6 +2242,21 @@ body {
 .theme-progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #8b5cf6 0%, #a78bfa 100%);
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.daily-progress-bar {
+  height: 6px;
+  background: #2c1810;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.daily-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
   border-radius: 3px;
   transition: width 0.5s ease;
 }
@@ -2387,6 +2420,51 @@ body {
   min-width: 120px;
 }
 
+.daily-section {
+  margin-bottom: 16px;
+}
+
+.daily-progress-card {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+  padding: 14px;
+}
+
+.daily-card-title {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #fbbf24;
+  margin-bottom: 10px;
+}
+
+.daily-progress-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 0.8rem;
+}
+
+.daily-progress-text {
+  color: #d4a574;
+}
+
+.daily-progress-score {
+  color: #ffd700;
+  font-weight: bold;
+}
+
+.daily-book-rarity {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(245, 158, 11, 0.2);
+  font-size: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .theme-progress-summary {
   background: rgba(139, 92, 246, 0.1);
   border: 1px solid rgba(139, 92, 246, 0.3);
@@ -2429,6 +2507,82 @@ body {
   background: rgba(255, 215, 0, 0.1);
   border-radius: 6px;
   border: 1px solid rgba(255, 215, 0, 0.3);
+}
+
+.daily-progress-summary {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 10px;
+  padding: 14px;
+  margin: 16px 0;
+}
+
+.daily-progress-label {
+  font-size: 0.95rem;
+  font-weight: bold;
+  color: #fbbf24;
+  margin-bottom: 10px;
+}
+
+.daily-progress-text {
+  font-size: 0.85rem;
+  color: #d4a574;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.daily-complete-badge {
+  display: inline-block;
+  margin-left: 8px;
+  background: #10b981;
+  color: #fff;
+  padding: 2px 10px;
+  border-radius: 10px;
+  font-size: 0.75rem;
+}
+
+.daily-best-hint {
+  font-size: 0.85rem;
+  color: #fbbf24;
+  margin-top: 8px;
+  text-align: center;
+}
+
+.daily-mini-progress {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 12px 0;
+  text-align: center;
+}
+
+.daily-mini-label {
+  font-size: 0.85rem;
+  color: #d4a574;
+}
+
+.daily-mini-score {
+  font-size: 1rem;
+  font-weight: bold;
+  color: #fbbf24;
+  margin: 0 6px;
+}
+
+.daily-mini-books {
+  font-size: 0.8rem;
+  color: #a08060;
+}
+
+.daily-header-badge {
+  display: inline-block;
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: white;
+  font-size: 0.75rem;
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-left: 10px;
+  font-weight: bold;
 }
 
 .book-rarity-info {

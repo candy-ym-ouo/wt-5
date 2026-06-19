@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, CLUE_TEMPLATES } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -44,6 +44,11 @@ import {
   getCurrentSeason,
   getCurrentWeekNumber,
   getPersonalBestRank,
+  getDailyProgress,
+  updateDailyProgress,
+  markDailyCompleted,
+  getDailyLeaderboard,
+  saveDailyLeaderboardEntry,
 } from '../utils/storage';
 import { THEMES, getThemeById, selectBookByTheme, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
 import {
@@ -54,6 +59,7 @@ import {
   calculateStreakBonusScore,
   STREAK_INHERIT_COST,
 } from '../data/streaks';
+import { generateDailyChallenge, getTodayDateKey, getDailyChallengeBooks } from '../data/dailyChallenge';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -151,6 +157,10 @@ export const [lastPenaltyInfo, setLastPenaltyInfo] = createSignal<WrongPenaltyEv
 export const [achievementProgress, setAchievementProgress] = createSignal<Record<string, AchievementProgress>>(getAllAchievementProgress());
 export const [themeFilterResult, setThemeFilterResult] = createSignal<ThemeFilterResult | null>(null);
 export const [showThemeFilterHint, setShowThemeFilterHint] = createSignal(false);
+export const [dailyChallenge, setDailyChallenge] = createSignal<DailyChallenge | null>(null);
+export const [dailyChallengeScore, setDailyChallengeScore] = createSignal(0);
+export const [dailyChallengeBooksFound, setDailyChallengeBooksFound] = createSignal(0);
+export const [showDailyCompletePopup, setShowDailyCompletePopup] = createSignal(false);
 
 let timerInterval: number | null = null;
 
@@ -577,6 +587,16 @@ const startTimer = () => {
         setTimeout(() => {
           if (gameState().gameMode === 'chapter') {
             saveChapterProgressState();
+          }
+          if (gameState().gameMode === 'daily') {
+            const challenge = dailyChallenge();
+            if (challenge) {
+              updateDailyProgress({
+                date: challenge.date,
+                score: gameState().score,
+                booksFound: gameState().foundBooks.length,
+              });
+            }
           }
           updatePersonalBest({
             score: gameState().score,
@@ -1874,6 +1894,11 @@ export const dismissStreakPopup = () => {
 export const nextRound = () => {
   const state = gameState();
   
+  if (state.gameMode === 'daily') {
+    nextDailyRound();
+    return;
+  }
+  
   if (state.gameMode === 'chapter') {
     const nextTaskIndex = state.currentTaskIndex + 1;
     const tasks = chapterTasks();
@@ -2085,6 +2110,7 @@ export const resetGame = () => {
   clearAllTimers();
   setShowAchievementPopup(null);
   setShowThemeRewardPopup(null);
+  setShowDailyCompletePopup(false);
   setGameState(prev => ({ ...prev, showDifficultyChange: false }));
   setGameState(initialStore);
   setCurrentClues([]);
@@ -2095,6 +2121,9 @@ export const resetGame = () => {
   setCurrentChapterId(null);
   setCurrentTheme(null);
   setThemeHintsUsed(0);
+  setDailyChallenge(null);
+  setDailyChallengeScore(0);
+  setDailyChallengeBooksFound(0);
 };
 
 export const restartCurrentTask = () => {
@@ -2626,4 +2655,210 @@ export const continueThemeGame = (themeId: string): boolean => {
   
   startThemeGame(themeId);
   return true;
+};
+
+export const startDailyChallenge = () => {
+  const challenge = generateDailyChallenge();
+  const books = getDailyChallengeBooks(challenge);
+  
+  if (books.length === 0) return;
+  
+  const firstBook = books[0];
+  setDailyChallenge(challenge);
+  setDailyChallengeScore(0);
+  setDailyChallengeBooksFound(0);
+  setupRound(firstBook);
+  setFoundGenres([]);
+  
+  const newGamesPlayed = incrementGamesPlayed();
+  setGamesPlayed(newGamesPlayed);
+  
+  const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
+  
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    score: 0,
+    timeRemaining: defaultConfig.gameTime,
+    hintsRemaining: defaultConfig.initialHints,
+    hintsUsed: 0,
+    currentLevel: 1,
+    targetBookId: firstBook.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    foundBooks: [],
+    consecutiveCorrect: 0,
+    gameMode: 'daily',
+    currentChapterId: null,
+    currentTaskIndex: 0,
+    chapterScore: 0,
+    chapterTimeUsed: 0,
+    chapterHintsUsed: 0,
+    difficultyLevel: DEFAULT_DIFFICULTY,
+    difficultyMode: 'fixed',
+    difficultyHistory: [DEFAULT_DIFFICULTY],
+    roundStats: {
+      findTimes: [],
+      hintsUsedPerRound: [],
+    },
+    difficultyAdjustmentReason: null,
+    showDifficultyChange: false,
+    lastTimeBonus: 0,
+    powerUps: createInitialPowerUpState(DEFAULT_DIFFICULTY),
+    currentThemeId: null,
+    themeFoundBooks: [],
+    themeScore: 0,
+  }));
+  
+  startTimer();
+};
+
+export const nextDailyRound = () => {
+  const state = gameState();
+  const challenge = dailyChallenge();
+  
+  if (!challenge || state.gameMode !== 'daily') return;
+  
+  const currentIndex = state.currentLevel - 1;
+  const nextIndex = currentIndex + 1;
+  const books = getDailyChallengeBooks(challenge);
+  
+  if (nextIndex >= books.length) {
+    completeDailyChallenge();
+    return;
+  }
+  
+  const nextBook = books[nextIndex];
+  const config = getDifficultyConfig(state.difficultyLevel);
+  
+  setupRound(nextBook);
+  
+  if (peekInterval) {
+    clearInterval(peekInterval);
+    peekInterval = null;
+  }
+  
+  const streakReward = getStreakReward(state.streak.currentStreak);
+  const streakTimeBonus = streakReward?.bonusTime || 0;
+  const streakHintBonus = streakReward?.bonusHints || 0;
+  
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    currentLevel: nextIndex + 1,
+    targetBookId: nextBook.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus, config.initialHints + streakHintBonus),
+    hintsUsed: 0,
+    showDifficultyChange: false,
+    timeRemaining: prev.timeRemaining + streakTimeBonus + 10,
+    powerUps: {
+      ...prev.powerUps,
+      peekActive: false,
+      peekEndTime: 0,
+      eliminatedBookIds: [],
+      powerUpsUsedThisRound: {
+        freeHints: 0,
+        timePeeks: 0,
+        eliminateWrongs: 0,
+      },
+    },
+  }));
+  
+  startTimer();
+};
+
+const completeDailyChallenge = () => {
+  const state = gameState();
+  const challenge = dailyChallenge();
+  
+  if (!challenge) return;
+  
+  const dateKey = challenge.date;
+  const finalScore = state.score;
+  const booksFound = state.foundBooks.length;
+  
+  updateDailyProgress({
+    date: dateKey,
+    score: finalScore,
+    booksFound,
+  });
+  
+  markDailyCompleted(dateKey);
+  
+  setDailyChallengeScore(finalScore);
+  setDailyChallengeBooksFound(booksFound);
+  setShowDailyCompletePopup(true);
+  
+  setGameState(prev => ({
+    ...prev,
+    state: 'won',
+  }));
+  
+  if (timerInterval) clearInterval(timerInterval);
+  updatePersonalBest({
+    score: finalScore,
+    booksFound,
+    findTime: lastFindTime(),
+    hintsUsed: state.hintsUsed,
+    consecutiveCorrect: state.consecutiveCorrect,
+  });
+  checkAchievements();
+};
+
+export const getDailyChallengeInfo = () => {
+  const state = gameState();
+  const challenge = dailyChallenge();
+  
+  if (!challenge || state.gameMode !== 'daily') return null;
+  
+  const progress = state.currentLevel;
+  const total = challenge.totalBooks;
+  const percent = (progress / total) * 100;
+  
+  return {
+    challenge,
+    progress,
+    total,
+    percent,
+    score: state.score,
+    isComplete: state.foundBooks.length >= total,
+  };
+};
+
+export const getTodayDailyProgress = () => {
+  const dateKey = getTodayDateKey();
+  return getDailyProgress(dateKey);
+};
+
+export const submitDailyScore = (playerName: string): boolean => {
+  const state = gameState();
+  const challenge = dailyChallenge();
+  
+  if (!challenge || state.gameMode !== 'daily') return false;
+  if (state.foundBooks.length === 0) return false;
+  
+  const config = getDifficultyConfig(state.difficultyLevel);
+  const timeUsed = config.gameTime - state.timeRemaining;
+  
+  saveDailyLeaderboardEntry({
+    date: challenge.date,
+    score: state.score,
+    booksFound: state.foundBooks.length,
+    timeUsed,
+    hintsUsed: state.hintsUsed,
+    playerName: playerName.trim(),
+    timestamp: Date.now(),
+  });
+  
+  return true;
+};
+
+export const getDailyLeaderboardEntries = () => {
+  const dateKey = getTodayDateKey();
+  return getDailyLeaderboard(dateKey);
+};
+
+export const isDailyChallengeMode = (): boolean => {
+  const state = gameState();
+  return state.gameMode === 'daily';
 };

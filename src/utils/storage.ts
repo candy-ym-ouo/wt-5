@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress } from '../types/game';
+import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress, DailyChallengeScore, DailyChallengeProgress } from '../types/game';
 import { ACHIEVEMENTS } from '../data/achievements';
 
 export const LEADERBOARD_KEY = 'old_bookstore_leaderboard';
@@ -16,6 +16,8 @@ export const CURRENT_THEME_KEY = 'old_bookstore_current_theme';
 export const STREAK_KEY = 'old_bookstore_streak';
 export const GAME_REPLAY_KEY = 'old_bookstore_replays';
 export const LAST_GAME_REPLAY_KEY = 'old_bookstore_last_replay';
+export const DAILY_CHALLENGE_LEADERBOARD_KEY = 'old_bookstore_daily_leaderboard';
+export const DAILY_CHALLENGE_PROGRESS_KEY = 'old_bookstore_daily_progress';
 
 const CURRENT_STORAGE_VERSION = 4;
 
@@ -660,3 +662,113 @@ export const clearGameReplays = (): void => {
   localStorage.removeItem(GAME_REPLAY_KEY);
   localStorage.removeItem(LAST_GAME_REPLAY_KEY);
 };
+
+export function getDailyLeaderboard(dateKey?: string): DailyChallengeScore[] {
+  try {
+    const data = localStorage.getItem(DAILY_CHALLENGE_LEADERBOARD_KEY);
+    if (!data) return [];
+    const allEntries: Record<string, DailyChallengeScore[]> = JSON.parse(data);
+    const targetDate = dateKey || getTodayDateKey();
+    return allEntries[targetDate] || [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveDailyLeaderboardEntry(entry: DailyChallengeScore): DailyChallengeScore[] {
+  try {
+    const data = localStorage.getItem(DAILY_CHALLENGE_LEADERBOARD_KEY);
+    const allEntries: Record<string, DailyChallengeScore[]> = data ? JSON.parse(data) : {};
+    
+    const dateEntries = allEntries[entry.date] || [];
+    dateEntries.push(entry);
+    dateEntries.sort((a, b) => b.score - a.score);
+    const topFifty = dateEntries.slice(0, 50);
+    allEntries[entry.date] = topFifty;
+    
+    localStorage.setItem(DAILY_CHALLENGE_LEADERBOARD_KEY, JSON.stringify(allEntries));
+    return topFifty;
+  } catch {
+    return [];
+  }
+}
+
+export function getDailyProgress(dateKey?: string): DailyChallengeProgress | null {
+  try {
+    const data = localStorage.getItem(DAILY_CHALLENGE_PROGRESS_KEY);
+    if (!data) return null;
+    const allProgress: Record<string, DailyChallengeProgress> = JSON.parse(data);
+    const targetDate = dateKey || getTodayDateKey();
+    return allProgress[targetDate] || null;
+  } catch {
+    return null;
+  }
+}
+
+export function updateDailyProgress(update: {
+  date: string;
+  score: number;
+  booksFound: number;
+}): DailyChallengeProgress {
+  try {
+    const data = localStorage.getItem(DAILY_CHALLENGE_PROGRESS_KEY);
+    const allProgress: Record<string, DailyChallengeProgress> = data ? JSON.parse(data) : {};
+    
+    const existing = allProgress[update.date];
+    const now = Date.now();
+    
+    const progress: DailyChallengeProgress = {
+      date: update.date,
+      bestScore: existing ? Math.max(existing.bestScore, update.score) : update.score,
+      bestScoreTimestamp: existing && existing.bestScore >= update.score 
+        ? existing.bestScoreTimestamp 
+        : now,
+      booksFound: existing ? Math.max(existing.booksFound, update.booksFound) : update.booksFound,
+      attempts: (existing?.attempts || 0) + 1,
+      completed: existing?.completed || false,
+    };
+    
+    allProgress[update.date] = progress;
+    localStorage.setItem(DAILY_CHALLENGE_PROGRESS_KEY, JSON.stringify(allProgress));
+    return progress;
+  } catch {
+    return {
+      date: update.date,
+      bestScore: update.score,
+      bestScoreTimestamp: Date.now(),
+      booksFound: update.booksFound,
+      attempts: 1,
+      completed: false,
+    };
+  }
+}
+
+export function markDailyCompleted(dateKey: string): void {
+  try {
+    const data = localStorage.getItem(DAILY_CHALLENGE_PROGRESS_KEY);
+    const allProgress: Record<string, DailyChallengeProgress> = data ? JSON.parse(data) : {};
+    
+    if (allProgress[dateKey]) {
+      allProgress[dateKey].completed = true;
+      localStorage.setItem(DAILY_CHALLENGE_PROGRESS_KEY, JSON.stringify(allProgress));
+    }
+  } catch {}
+}
+
+function getTodayDateKey(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export function getDailyBestScore(dateKey?: string): number {
+  const progress = getDailyProgress(dateKey);
+  return progress?.bestScore || 0;
+}
+
+export function hasCompletedDailyChallenge(dateKey?: string): boolean {
+  const progress = getDailyProgress(dateKey);
+  return progress?.completed || false;
+}
