@@ -6,7 +6,8 @@ import AchievementList from './components/AchievementList';
 import Timer from './components/Timer';
 import GameModal from './components/GameModal';
 import Leaderboard from './components/Leaderboard';
-import { gameState, showAchievementPopup } from './store/gameStore';
+import ChapterProgress from './components/ChapterProgress';
+import { gameState, showAchievementPopup, getCurrentChapter, chapterTasks } from './store/gameStore';
 
 export default function App() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
@@ -14,11 +15,21 @@ export default function App() {
   const isPlaying = createMemo(() => state().state === 'playing');
   const currentScore = createMemo(() => state().score);
   const currentLevel = createMemo(() => state().currentLevel);
+  const isChapterMode = createMemo(() => state().gameMode === 'chapter');
+  const currentChapter = createMemo(() => getCurrentChapter());
+  const tasks = createMemo(() => chapterTasks());
 
   return (
     <div class="game-container">
       <header class="game-header">
-        <div class="game-title">📚 旧书店寻物</div>
+        <div class="game-title">
+          📚 旧书店寻物
+          {isChapterMode() && currentChapter() && (
+            <span class="chapter-badge">
+              {currentChapter()?.icon} {currentChapter()?.title}
+            </span>
+          )}
+        </div>
         <div class="header-stats">
           <Timer />
           <div class="stat-item">
@@ -26,8 +37,12 @@ export default function App() {
             <div class="stat-value">{currentScore()}</div>
           </div>
           <div class="stat-item">
-            <div class="stat-label">📖 关卡</div>
-            <div class="stat-value">{currentLevel()}</div>
+            <div class="stat-label">{isChapterMode() ? '📖 任务' : '📖 关卡'}</div>
+            <div class="stat-value">
+              {isChapterMode() && tasks().length > 0
+                ? `${currentLevel()}/${tasks().length}`
+                : currentLevel()}
+            </div>
           </div>
           <button 
             class="stat-item rank-button"
@@ -44,6 +59,8 @@ export default function App() {
         <Bookshelf />
         
         <aside class="sidebar">
+          <ChapterProgress />
+
           <div class="sidebar-section">
             <div class="section-title">
               <span>🔍</span>

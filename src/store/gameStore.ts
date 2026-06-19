@@ -1,9 +1,19 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, CLUE_TEMPLATES } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
-import { getUnlockedAchievements, saveUnlockedAchievements, incrementGamesPlayed, getGamesPlayed } from '../utils/storage';
+import { getChapterById, getNextChapter } from '../data/chapters';
+import {
+  getUnlockedAchievements,
+  saveUnlockedAchievements,
+  incrementGamesPlayed,
+  getGamesPlayed,
+  getChapterProgress,
+  saveChapterProgress,
+  getCurrentChapterId,
+  setCurrentChapterId,
+} from '../utils/storage';
 
 const GAME_TIME = 180;
 const INITIAL_HINTS = 5;
@@ -20,6 +30,12 @@ const initialStore: GameStore = {
   unlockedAchievements: getUnlockedAchievements(),
   foundBooks: [],
   consecutiveCorrect: 0,
+  currentChapterId: null,
+  currentTaskIndex: 0,
+  chapterScore: 0,
+  chapterTimeUsed: 0,
+  chapterHintsUsed: 0,
+  gameMode: 'classic',
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -30,6 +46,8 @@ export const [lastFindTime, setLastFindTime] = createSignal(0);
 export const [roundStartTime, setRoundStartTime] = createSignal(0);
 export const [foundGenres, setFoundGenres] = createSignal<string[]>([]);
 export const [gamesPlayed, setGamesPlayed] = createSignal(getGamesPlayed());
+export const [currentTask, setCurrentTask] = createSignal<ChapterTask | null>(null);
+export const [chapterTasks, setChapterTasks] = createSignal<ChapterTask[]>([]);
 
 let timerInterval: number | null = null;
 
@@ -97,6 +115,11 @@ const checkAchievements = () => {
     newAchievement = 'veteran';
   }
 
+  if (state.gameMode === 'chapter' && !unlocked.includes('chapter_starter')) {
+    unlocked.push('chapter_starter');
+    newAchievement = 'chapter_starter';
+  }
+
   if (unlocked.length !== state.unlockedAchievements.length) {
     setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
     saveUnlockedAchievements(unlocked);
@@ -110,8 +133,23 @@ const checkAchievements = () => {
   }
 };
 
-export const startGame = () => {
-  const book = selectRandomTarget();
+const startTimer = () => {
+  if (timerInterval) clearInterval(timerInterval);
+  timerInterval = window.setInterval(() => {
+    setGameState(prev => {
+      if (prev.state !== 'playing') return prev;
+      const newTime = prev.timeRemaining - 1;
+      if (newTime <= 0) {
+        if (timerInterval) clearInterval(timerInterval);
+        setTimeout(checkAchievements, 0);
+        return { ...prev, timeRemaining: 0, state: 'lost' };
+      }
+      return { ...prev, timeRemaining: newTime };
+    });
+  }, 1000);
+};
+
+const setupRound = (book: Book) => {
   const clues = createCluesForBook(book.id);
   
   const firstClueContent = CLUE_TEMPLATES.year(book.year);
@@ -120,6 +158,11 @@ export const startGame = () => {
   setTargetBook(book);
   setCurrentClues(clues);
   setRoundStartTime(Date.now());
+};
+
+export const startGame = () => {
+  const book = selectRandomTarget();
+  setupRound(book);
   setFoundGenres([]);
   
   const newGamesPlayed = incrementGamesPlayed();
@@ -134,24 +177,73 @@ export const startGame = () => {
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: book.id,
-    unlockedClues: [clues[0].id],
+    unlockedClues: [currentClues()[0]?.id || ''],
     foundBooks: [],
     consecutiveCorrect: 0,
+    gameMode: 'classic',
+    currentChapterId: null,
+    currentTaskIndex: 0,
+    chapterScore: 0,
+    chapterTimeUsed: 0,
+    chapterHintsUsed: 0,
   }));
 
-  if (timerInterval) clearInterval(timerInterval);
-  timerInterval = window.setInterval(() => {
-    setGameState(prev => {
-      if (prev.state !== 'playing') return prev;
-      const newTime = prev.timeRemaining - 1;
-      if (newTime <= 0) {
-        if (timerInterval) clearInterval(timerInterval);
-        setTimeout(checkAchievements, 0);
-        return { ...prev, timeRemaining: 0, state: 'lost' };
-      }
-      return { ...prev, timeRemaining: newTime };
-    });
-  }, 1000);
+  startTimer();
+};
+
+export const startChapterGame = (chapterId: string) => {
+  const chapter = getChapterById(chapterId);
+  if (!chapter) return;
+
+  const progress = getChapterProgress(chapterId);
+  const startTaskIndex = progress?.currentTaskIndex || 0;
+  const tasks = chapter.tasks.map((t) => ({
+    ...t,
+    completed: progress?.completedTasks.includes(t.id) || false,
+  }));
+
+  setChapterTasks(tasks);
+
+  if (startTaskIndex >= tasks.length) {
+    return;
+  }
+
+  const currentTaskData = tasks[startTaskIndex];
+  const book = BOOKS.find(b => b.id === currentTaskData.bookId);
+  if (!book) return;
+
+  setCurrentTask(currentTaskData);
+  setupRound(book);
+  setFoundGenres([]);
+  setCurrentChapterId(chapterId);
+
+  const newGamesPlayed = incrementGamesPlayed();
+  setGamesPlayed(newGamesPlayed);
+
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    score: 0,
+    timeRemaining: GAME_TIME,
+    hintsRemaining: INITIAL_HINTS,
+    hintsUsed: 0,
+    currentLevel: startTaskIndex + 1,
+    targetBookId: book.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    foundBooks: progress?.completedTasks.map(tid => {
+      const task = chapter.tasks.find(t => t.id === tid);
+      return task?.bookId || '';
+    }).filter(Boolean) || [],
+    consecutiveCorrect: 0,
+    gameMode: 'chapter',
+    currentChapterId: chapterId,
+    currentTaskIndex: startTaskIndex,
+    chapterScore: progress?.totalScore || 0,
+    chapterTimeUsed: progress?.totalTime || 0,
+    chapterHintsUsed: progress?.totalHints || 0,
+  }));
+
+  startTimer();
 };
 
 export const useHint = () => {
@@ -197,6 +289,120 @@ export const useHint = () => {
   }));
 };
 
+const saveChapterProgressState = () => {
+  const state = gameState();
+  if (state.gameMode !== 'chapter' || !state.currentChapterId) return;
+
+  const tasks = chapterTasks();
+  const completedTasks = tasks.filter(t => t.completed).map(t => t.id);
+  
+  const progress = {
+    chapterId: state.currentChapterId,
+    currentTaskIndex: state.currentTaskIndex,
+    completedTasks,
+    totalScore: state.chapterScore,
+    totalTime: state.chapterTimeUsed,
+    totalHints: state.chapterHintsUsed,
+  };
+
+  saveChapterProgress(progress as any);
+  setCurrentChapterId(state.currentChapterId);
+};
+
+const completeChapter = () => {
+  const state = gameState();
+  const chapter = getChapterById(state.currentChapterId!);
+  if (!chapter) return;
+
+  const finalScore = state.chapterScore + chapter.bonusScore;
+
+  const progress = {
+    chapterId: state.currentChapterId!,
+    currentTaskIndex: state.currentTaskIndex,
+    completedTasks: chapterTasks().filter(t => t.completed).map(t => t.id),
+    totalScore: finalScore,
+    totalTime: state.chapterTimeUsed,
+    totalHints: state.chapterHintsUsed,
+    completedAt: Date.now(),
+  };
+  saveChapterProgress(progress as any);
+
+  const nextChapter = getNextChapter(state.currentChapterId!);
+  if (nextChapter) {
+    const nextProgress = getChapterProgress(nextChapter.id);
+    if (!nextProgress) {
+      saveChapterProgress({
+        chapterId: nextChapter.id,
+        currentTaskIndex: 0,
+        completedTasks: [],
+        totalScore: 0,
+        totalTime: 0,
+        totalHints: 0,
+      } as any);
+    }
+  }
+
+  const unlocked = [...state.unlockedAchievements];
+  let newAchievement: string | null = null;
+
+  if (!unlocked.includes('chapter_master')) {
+    unlocked.push('chapter_master');
+    newAchievement = 'chapter_master';
+  }
+
+  if (state.chapterHintsUsed === 0 && !unlocked.includes('perfect_chapter')) {
+    unlocked.push('perfect_chapter');
+    newAchievement = 'perfect_chapter';
+  }
+
+  const allChapters = [
+    'chapter_literature',
+    'chapter_classics', 
+    'chapter_science',
+    'chapter_philosophy',
+    'chapter_tech'
+  ];
+  
+  let allCompleted = true;
+  for (const chId of allChapters) {
+    const chProgress = getChapterProgress(chId);
+    if (!chProgress?.completedAt) {
+      allCompleted = false;
+      break;
+    }
+  }
+  
+  if (allCompleted && !unlocked.includes('all_chapters')) {
+    unlocked.push('all_chapters');
+    newAchievement = 'all_chapters';
+  }
+
+  if (unlocked.length !== state.unlockedAchievements.length) {
+    setGameState(prev => ({
+      ...prev,
+      state: 'chapter_complete',
+      chapterScore: finalScore,
+      unlockedAchievements: unlocked,
+    }));
+    saveUnlockedAchievements(unlocked);
+    if (newAchievement) {
+      const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
+      if (ach) {
+        setTimeout(() => {
+          setShowAchievementPopup(ach.title);
+          setTimeout(() => setShowAchievementPopup(null), 3000);
+        }, 500);
+      }
+    }
+  } else {
+    setGameState(prev => ({
+      ...prev,
+      state: 'chapter_complete',
+      chapterScore: finalScore,
+    }));
+  }
+};
+
 export const selectBook = (bookId: string): boolean => {
   const state = gameState();
   if (state.state !== 'playing') return false;
@@ -216,16 +422,49 @@ export const selectBook = (bookId: string): boolean => {
     const newFoundGenres = [...foundGenres(), book.genre];
     setFoundGenres(newFoundGenres);
 
-    setGameState(prev => ({
-      ...prev,
-      score: prev.score + score,
-      foundBooks: [...prev.foundBooks, bookId],
-      consecutiveCorrect: prev.consecutiveCorrect + 1,
-      state: 'won',
-    }));
+    if (state.gameMode === 'chapter') {
+      const task = currentTask();
+      if (task) {
+        setChapterTasks(prev => prev.map(t =>
+          t.id === task.id
+            ? { ...t, completed: true, scoreEarned: score, timeUsed: findTime, hintsUsed: state.hintsUsed }
+            : t
+        ));
 
-    if (timerInterval) clearInterval(timerInterval);
-    checkAchievements();
+        const nextTaskIndex = state.currentTaskIndex + 1;
+        const tasks = chapterTasks();
+        
+        setGameState(prev => ({
+          ...prev,
+          score: prev.score + score,
+          foundBooks: [...prev.foundBooks, bookId],
+          consecutiveCorrect: prev.consecutiveCorrect + 1,
+          chapterScore: prev.chapterScore + score,
+          chapterTimeUsed: prev.chapterTimeUsed + findTime,
+          chapterHintsUsed: prev.chapterHintsUsed + prev.hintsUsed,
+          state: nextTaskIndex >= tasks.length ? 'chapter_complete' : 'won',
+        }));
+
+        if (timerInterval) clearInterval(timerInterval);
+        checkAchievements();
+        saveChapterProgressState();
+
+        if (nextTaskIndex >= tasks.length) {
+          setTimeout(completeChapter, 500);
+        }
+      }
+    } else {
+      setGameState(prev => ({
+        ...prev,
+        score: prev.score + score,
+        foundBooks: [...prev.foundBooks, bookId],
+        consecutiveCorrect: prev.consecutiveCorrect + 1,
+        state: 'won',
+      }));
+
+      if (timerInterval) clearInterval(timerInterval);
+      checkAchievements();
+    }
     return true;
   } else {
     setGameState(prev => ({
@@ -238,38 +477,51 @@ export const selectBook = (bookId: string): boolean => {
 };
 
 export const nextRound = () => {
-  const book = selectRandomTarget();
-  const clues = createCluesForBook(book.id);
+  const state = gameState();
   
-  const firstClueContent = CLUE_TEMPLATES.year(book.year);
-  clues[0].content = firstClueContent;
-  
-  setTargetBook(book);
-  setCurrentClues(clues);
-  setRoundStartTime(Date.now());
+  if (state.gameMode === 'chapter') {
+    const nextTaskIndex = state.currentTaskIndex + 1;
+    const tasks = chapterTasks();
+    
+    if (nextTaskIndex >= tasks.length) {
+      return;
+    }
 
-  setGameState(prev => ({
-    ...prev,
-    state: 'playing',
-    currentLevel: prev.currentLevel + 1,
-    targetBookId: book.id,
-    unlockedClues: [clues[0].id],
-    hintsRemaining: Math.min(prev.hintsRemaining + 1, INITIAL_HINTS),
-  }));
+    const nextTask = tasks[nextTaskIndex];
+    const book = BOOKS.find(b => b.id === nextTask.bookId);
+    if (!book) return;
 
-  if (timerInterval) clearInterval(timerInterval);
-  timerInterval = window.setInterval(() => {
-    setGameState(prev => {
-      if (prev.state !== 'playing') return prev;
-      const newTime = prev.timeRemaining - 1;
-      if (newTime <= 0) {
-        if (timerInterval) clearInterval(timerInterval);
-        setTimeout(checkAchievements, 0);
-        return { ...prev, timeRemaining: 0, state: 'lost' };
-      }
-      return { ...prev, timeRemaining: newTime };
-    });
-  }, 1000);
+    setCurrentTask(nextTask);
+    setupRound(book);
+
+    setGameState(prev => ({
+      ...prev,
+      state: 'playing',
+      currentLevel: nextTaskIndex + 1,
+      currentTaskIndex: nextTaskIndex,
+      targetBookId: book.id,
+      unlockedClues: [currentClues()[0]?.id || ''],
+      hintsRemaining: Math.min(prev.hintsRemaining + 1, INITIAL_HINTS),
+      hintsUsed: 0,
+    }));
+
+    startTimer();
+    saveChapterProgressState();
+  } else {
+    const book = selectRandomTarget();
+    setupRound(book);
+
+    setGameState(prev => ({
+      ...prev,
+      state: 'playing',
+      currentLevel: prev.currentLevel + 1,
+      targetBookId: book.id,
+      unlockedClues: [currentClues()[0]?.id || ''],
+      hintsRemaining: Math.min(prev.hintsRemaining + 1, INITIAL_HINTS),
+    }));
+
+    startTimer();
+  }
 };
 
 export const pauseGame = () => {
@@ -286,4 +538,32 @@ export const resetGame = () => {
   setCurrentClues([]);
   setTargetBook(null);
   setFoundGenres([]);
+  setCurrentTask(null);
+  setChapterTasks([]);
+  setCurrentChapterId(null);
+};
+
+export const getCurrentChapter = () => {
+  const state = gameState();
+  if (!state.currentChapterId) return null;
+  return getChapterById(state.currentChapterId);
+};
+
+export const hasSavedProgress = (): boolean => {
+  const currentChapterId = getCurrentChapterId();
+  if (!currentChapterId) return false;
+  
+  const progress = getChapterProgress(currentChapterId);
+  return progress !== null && !progress.completedAt && progress.currentTaskIndex > 0;
+};
+
+export const continueSavedGame = () => {
+  const chapterId = getCurrentChapterId();
+  if (!chapterId) return false;
+  
+  const progress = getChapterProgress(chapterId);
+  if (!progress || progress.completedAt) return false;
+  
+  startChapterGame(chapterId);
+  return true;
 };
