@@ -2349,4 +2349,286 @@ body {
   transform: translateY(0);
 }
 
+/* ========== 分级惩罚反馈样式 ========== */
+
+/* 惩罚级别颜色变量 */
+.penalty-warning {
+  --penalty-color: #f59e0b;
+  --penalty-bg: rgba(245, 158, 11, 0.15);
+  --penalty-border: rgba(245, 158, 11, 0.5);
+}
+
+.penalty-caution {
+  --penalty-color: #f97316;
+  --penalty-bg: rgba(249, 115, 22, 0.15);
+  --penalty-border: rgba(249, 115, 22, 0.5);
+}
+
+.penalty-danger {
+  --penalty-color: #ef4444;
+  --penalty-bg: rgba(239, 68, 68, 0.15);
+  --penalty-border: rgba(239, 68, 68, 0.5);
+}
+
+.penalty-critical {
+  --penalty-color: #dc2626;
+  --penalty-bg: rgba(220, 38, 38, 0.2);
+  --penalty-border: rgba(220, 38, 38, 0.6);
+}
+
+/* 书架区域惩罚覆盖层 */
+.bookshelf-section.penalty-overlay {
+  position: relative;
+}
+
+.bookshelf-section.penalty-overlay::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--penalty-bg);
+  border: 3px solid var(--penalty-border);
+  border-radius: 8px;
+  pointer-events: none;
+  z-index: 100;
+  animation: penaltyPulse 0.5s ease-in-out infinite alternate;
+}
+
+@keyframes penaltyPulse {
+  from {
+    opacity: 0.6;
+    box-shadow: 0 0 20px var(--penalty-border);
+  }
+  to {
+    opacity: 1;
+    box-shadow: 0 0 40px var(--penalty-border);
+  }
+}
+
+/* 书架摇晃动画 */
+.bookshelf-section.shake {
+  animation: shake 0.4s ease-in-out;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+  20%, 40%, 60%, 80% { transform: translateX(5px); }
+}
+
+/* 惩罚警告横幅 */
+.penalty-warning-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 200;
+  background: linear-gradient(135deg, var(--penalty-bg) 0%, var(--penalty-color) 100%);
+  border: 2px solid var(--penalty-color);
+  border-radius: 16px;
+  padding: 24px 40px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 30px var(--penalty-border);
+  animation: penaltyBannerIn 0.3s ease-out, penaltyBannerPulse 1s ease-in-out 0.3s infinite alternate;
+  backdrop-filter: blur(8px);
+}
+
+@keyframes penaltyBannerIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes penaltyBannerPulse {
+  from {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 20px var(--penalty-border);
+  }
+  to {
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 50px var(--penalty-color);
+  }
+}
+
+.penalty-warning-title {
+  font-size: 2rem;
+  font-weight: bold;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  margin-bottom: 8px;
+}
+
+.penalty-warning-desc {
+  font-size: 1.2rem;
+  color: rgba(255, 255, 255, 0.95);
+  margin-bottom: 6px;
+}
+
+.penalty-warning-count {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* 提示按钮冻结状态 */
+.hint-button.hint-frozen {
+  background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%) !important;
+  border-color: #3b82f6 !important;
+  color: #93c5fd !important;
+  cursor: not-allowed;
+  position: relative;
+  overflow: hidden;
+}
+
+.hint-button.hint-frozen::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(147, 197, 253, 0.3), transparent);
+  animation: frozenShine 2s ease-in-out infinite;
+}
+
+@keyframes frozenShine {
+  0% { left: -100%; }
+  50%, 100% { left: 100%; }
+}
+
+/* 连续误选信息卡片 */
+.consecutive-wrong-info {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--penalty-bg);
+  border: 1px solid var(--penalty-border);
+  border-radius: 10px;
+}
+
+.wrong-info-title {
+  font-weight: bold;
+  color: var(--penalty-color);
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.wrong-info-stats {
+  font-size: 0.85rem;
+  color: #a08060;
+  margin-bottom: 4px;
+}
+
+.wrong-info-hint {
+  font-size: 0.8rem;
+  color: var(--penalty-color);
+  font-weight: 600;
+}
+
+/* 结算界面惩罚统计 */
+.penalty-stats {
+  margin: 20px 0;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 12px;
+}
+
+.penalty-stats-title {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #f59e0b;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.penalty-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.penalty-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+}
+
+.penalty-stat-label {
+  font-size: 0.8rem;
+  color: #a08060;
+  margin-bottom: 4px;
+}
+
+.penalty-stat-value {
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #ffd700;
+}
+
+.penalty-stat-value.penalty-negative {
+  color: #ef4444;
+}
+
+/* 惩罚历史记录 */
+.penalty-history {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.penalty-history-title {
+  font-size: 0.9rem;
+  color: #a08060;
+  margin-bottom: 8px;
+}
+
+.penalty-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.penalty-history-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--penalty-bg);
+  border: 1px solid var(--penalty-border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.penalty-level-badge {
+  font-size: 1rem;
+}
+
+.penalty-history-count {
+  color: var(--penalty-color);
+  font-weight: bold;
+}
+
+.penalty-history-penalty {
+  color: #ef4444;
+}
+
+.penalty-history-freeze {
+  color: #3b82f6;
+}
+
+.penalty-history-level {
+  margin-left: auto;
+  color: #a08060;
+  font-size: 0.8rem;
+}
+
 

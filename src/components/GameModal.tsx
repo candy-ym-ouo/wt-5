@@ -23,6 +23,7 @@ import {
   startGameWithStreak,
   resumeGame,
   currentClues,
+  getWrongPenaltyInfo,
 } from '../store/gameStore';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
@@ -54,6 +55,7 @@ export default function GameModal() {
   const clues = createMemo(() => currentClues());
   const unlockedClueCount = createMemo(() => clues().filter(c => c.unlocked).length);
   const totalClueCount = createMemo(() => clues().length);
+  const wrongPenaltyInfo = createMemo(() => getWrongPenaltyInfo());
   
   const savedStreak = createMemo(() => getSavedStreakInfo());
   const hasStreak = createMemo(() => hasSavedStreak());
@@ -468,6 +470,53 @@ export default function GameModal() {
               </div>
             </div>
 
+            {(wrongPenaltyInfo().penaltyHistory.length > 0 || wrongPenaltyInfo().maxConsecutiveWrong > 0) && (
+              <div class="penalty-stats">
+                <div class="penalty-stats-title">📊 误选统计复盘</div>
+                <div class="penalty-stats-grid">
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">总误选次数</span>
+                    <span class="penalty-stat-value">{wrongPenaltyInfo().penaltyHistory.length}</span>
+                  </div>
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">最高连续误选</span>
+                    <span class="penalty-stat-value">{wrongPenaltyInfo().maxConsecutiveWrong}</span>
+                  </div>
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">累计扣时</span>
+                    <span class="penalty-stat-value penalty-negative">-{wrongPenaltyInfo().totalTimePenalty}s</span>
+                  </div>
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">累计扣分</span>
+                    <span class="penalty-stat-value penalty-negative">-{wrongPenaltyInfo().totalScorePenalty}</span>
+                  </div>
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">提示冻结次数</span>
+                    <span class="penalty-stat-value">{wrongPenaltyInfo().totalHintFreezes}</span>
+                  </div>
+                </div>
+                {wrongPenaltyInfo().penaltyHistory.length > 0 && (
+                  <div class="penalty-history">
+                    <div class="penalty-history-title">误选记录</div>
+                    <div class="penalty-history-list">
+                      {wrongPenaltyInfo().penaltyHistory.slice(-5).map((event) => (
+                        <div class={`penalty-history-item penalty-${event.level}`}>
+                          <span class="penalty-level-badge">
+                            {event.level === 'warning' ? '⚠️' : event.level === 'caution' ? '⚡' : event.level === 'danger' ? '🔥' : '💀'}
+                          </span>
+                          <span class="penalty-history-count">×{event.consecutiveCount}</span>
+                          <span class="penalty-history-penalty">-{event.timePenalty}s</span>
+                          {event.scorePenalty > 0 && <span class="penalty-history-penalty">-{event.scorePenalty}分</span>}
+                          {event.hintFrozen && <span class="penalty-history-freeze">❄️{Math.ceil(event.hintFreezeDuration/1000)}s</span>}
+                          <span class="penalty-history-level">关卡{event.currentLevel}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {isChapterMode() && (
               <div class="chapter-progress-summary">
                 <div class="progress-label">
@@ -650,6 +699,53 @@ export default function GameModal() {
                 <div class="game-stat-label">使用提示</div>
               </div>
             </div>
+
+            {(wrongPenaltyInfo().penaltyHistory.length > 0 || wrongPenaltyInfo().maxConsecutiveWrong > 0) && (
+              <div class="penalty-stats">
+                <div class="penalty-stats-title">📊 误选统计复盘</div>
+                <div class="penalty-stats-grid">
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">总误选次数</span>
+                    <span class="penalty-stat-value">{wrongPenaltyInfo().penaltyHistory.length}</span>
+                  </div>
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">最高连续误选</span>
+                    <span class="penalty-stat-value">{wrongPenaltyInfo().maxConsecutiveWrong}</span>
+                  </div>
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">累计扣时</span>
+                    <span class="penalty-stat-value penalty-negative">-{wrongPenaltyInfo().totalTimePenalty}s</span>
+                  </div>
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">累计扣分</span>
+                    <span class="penalty-stat-value penalty-negative">-{wrongPenaltyInfo().totalScorePenalty}</span>
+                  </div>
+                  <div class="penalty-stat-item">
+                    <span class="penalty-stat-label">提示冻结次数</span>
+                    <span class="penalty-stat-value">{wrongPenaltyInfo().totalHintFreezes}</span>
+                  </div>
+                </div>
+                {wrongPenaltyInfo().penaltyHistory.length > 0 && (
+                  <div class="penalty-history">
+                    <div class="penalty-history-title">误选记录</div>
+                    <div class="penalty-history-list">
+                      {wrongPenaltyInfo().penaltyHistory.slice(-5).map((event) => (
+                        <div class={`penalty-history-item penalty-${event.level}`}>
+                          <span class="penalty-level-badge">
+                            {event.level === 'warning' ? '⚠️' : event.level === 'caution' ? '⚡' : event.level === 'danger' ? '🔥' : '💀'}
+                          </span>
+                          <span class="penalty-history-count">×{event.consecutiveCount}</span>
+                          <span class="penalty-history-penalty">-{event.timePenalty}s</span>
+                          {event.scorePenalty > 0 && <span class="penalty-history-penalty">-{event.scorePenalty}分</span>}
+                          {event.hintFrozen && <span class="penalty-history-freeze">❄️{Math.ceil(event.hintFreezeDuration/1000)}s</span>}
+                          <span class="penalty-history-level">关卡{event.currentLevel}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {!isChapterMode() && state().streak.bestStreak > 0 && (
               <div class="streak-summary-lost">

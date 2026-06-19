@@ -247,6 +247,33 @@ export interface StreakState {
   inheritedStreak: boolean;
 }
 
+export type PenaltyLevel = 'warning' | 'caution' | 'danger' | 'critical';
+
+export interface WrongPenaltyEvent {
+  id: string;
+  timestamp: number;
+  level: PenaltyLevel;
+  consecutiveCount: number;
+  timePenalty: number;
+  scorePenalty: number;
+  hintFrozen: boolean;
+  hintFreezeDuration: number;
+  targetBookId: string;
+  wrongBookId: string;
+  currentLevel: number;
+}
+
+export interface WrongPenaltyState {
+  consecutiveWrong: number;
+  currentLevel: PenaltyLevel | null;
+  hintFreezeUntil: number;
+  totalTimePenalty: number;
+  totalScorePenalty: number;
+  totalHintFreezes: number;
+  penaltyHistory: WrongPenaltyEvent[];
+  maxConsecutiveWrong: number;
+}
+
 export interface GameStore {
   state: GameState;
   score: number;
@@ -282,4 +309,5 @@ export interface GameStore {
   streak: StreakState;
   showStreakPopup: boolean;
   lastStreakBonus: number;
+  wrongPenalty: WrongPenaltyState;
 }

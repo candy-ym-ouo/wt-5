@@ -1,8 +1,8 @@
 import { onMount, onCleanup, createSignal, createEffect } from 'solid-js';
 import * as PIXI from 'pixi.js';
 import { BOOKS, SHELF_COUNT } from '../data/books';
-import { selectBookWithRarity, gameState } from '../store/gameStore';
-import type { Book } from '../types/game';
+import { selectBookWithRarity, gameState, showWrongWarning, lastPenaltyInfo, getWrongPenaltyInfo } from '../store/gameStore';
+import type { Book, PenaltyLevel } from '../types/game';
 
 export default function Bookshelf() {
   let containerRef: HTMLDivElement | undefined;
@@ -11,6 +11,25 @@ export default function Bookshelf() {
   let shelfContainers: PIXI.Container[] = [];
   
   const [hoveredBook, setHoveredBook] = createSignal<Book | null>(null);
+  const [shakeTrigger, setShakeTrigger] = createSignal(0);
+
+  const penaltyLevelText = (level: PenaltyLevel): string => {
+    switch (level) {
+      case 'warning': return '⚠️ 警告';
+      case 'caution': return '⚡ 注意';
+      case 'danger': return '🔥 危险';
+      case 'critical': return '💀 严重';
+    }
+  };
+
+  const penaltyLevelDescription = (): string => {
+    const info = lastPenaltyInfo();
+    if (!info) return '';
+    const parts = [`-${info.timePenalty}秒`];
+    if (info.scorePenalty > 0) parts.push(`-${info.scorePenalty}分`);
+    if (info.hintFrozen) parts.push(`提示冻结${Math.ceil(info.hintFreezeDuration / 1000)}秒`);
+    return parts.join(' · ');
+  };
 
   const updateBookVisuals = () => {
     if (!app) return;
@@ -235,6 +254,7 @@ export default function Bookshelf() {
       }, 500);
     } else {
       sprite.tint = 0xff0000;
+      setShakeTrigger(prev => prev + 1);
       setTimeout(() => {
         sprite.tint = 0xffffff;
       }, 500);
@@ -295,7 +315,24 @@ export default function Bookshelf() {
   });
 
   return (
-    <div ref={containerRef} class="bookshelf-section">
+    <div 
+      ref={containerRef} 
+      class={`bookshelf-section ${showWrongWarning() ? `penalty-overlay penalty-${showWrongWarning()}` : ''} ${shakeTrigger() > 0 ? 'shake' : ''}`}
+      data-shake={shakeTrigger()}
+    >
+      {showWrongWarning() && (
+        <div class={`penalty-warning-banner penalty-banner-${showWrongWarning()}`}>
+          <div class="penalty-warning-title">
+            {penaltyLevelText(showWrongWarning()!)}
+          </div>
+          <div class="penalty-warning-desc">
+            {penaltyLevelDescription()}
+          </div>
+          <div class="penalty-warning-count">
+            连续错误：{getWrongPenaltyInfo().consecutiveWrong} 次
+          </div>
+        </div>
+      )}
       {hoveredBook() && (
         <div class="book-info-popup" style="position: absolute; top: 20px; left: 20px;">
           <div class="book-popup-title">{hoveredBook()?.title}</div>

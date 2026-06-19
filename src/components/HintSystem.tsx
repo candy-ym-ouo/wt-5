@@ -1,5 +1,5 @@
 import { createMemo, createSignal, createEffect } from 'solid-js';
-import { useHint, useFreeHint, useTimePeek, useEliminateWrong, getPeekTimeRemaining, gameState, getDifficultyInfo } from '../store/gameStore';
+import { useHint, useFreeHint, useTimePeek, useEliminateWrong, getPeekTimeRemaining, gameState, getDifficultyInfo, isHintFrozen, getHintFreezeRemaining, getWrongPenaltyInfo } from '../store/gameStore';
 import { getDifficultyConfig } from '../data/difficulty';
 import { POWER_UP_CONFIGS } from '../data/powerUps';
 
@@ -9,13 +9,15 @@ export default function HintSystem() {
   const hintsRemaining = createMemo(() => state().hintsRemaining);
   const hintsUsed = createMemo(() => state().hintsUsed);
   const isPlaying = createMemo(() => state().state === 'playing');
-  const isDisabled = createMemo(() => hintsRemaining() <= 0 || !isPlaying());
+  const isDisabled = createMemo(() => hintsRemaining() <= 0 || !isPlaying() || isHintFrozen());
   const maxHints = createMemo(() => getDifficultyConfig(state().difficultyLevel).initialHints);
   const diffConfig = createMemo(() => diffInfo().config);
   const isDynamic = createMemo(() => diffInfo().mode === 'dynamic');
+  const wrongPenaltyInfo = createMemo(() => getWrongPenaltyInfo());
 
   const powerUps = createMemo(() => state().powerUps);
   const [peekTime, setPeekTime] = createSignal(0);
+  const [freezeRemaining, setFreezeRemaining] = createSignal(0);
 
   createEffect(() => {
     if (powerUps().peekActive) {
@@ -28,8 +30,19 @@ export default function HintSystem() {
     }
   });
 
+  createEffect(() => {
+    if (isHintFrozen()) {
+      const interval = setInterval(() => {
+        setFreezeRemaining(getHintFreezeRemaining());
+      }, 200);
+      return () => clearInterval(interval);
+    } else {
+      setFreezeRemaining(0);
+    }
+  });
+
   const freeHintDisabled = createMemo(() => 
-    powerUps().freeHints <= 0 || !isPlaying()
+    powerUps().freeHints <= 0 || !isPlaying() || isHintFrozen()
   );
 
   const timePeekDisabled = createMemo(() => 
@@ -59,11 +72,13 @@ export default function HintSystem() {
       </div>
 
       <button
-        class="hint-button"
+        class={`hint-button ${isHintFrozen() ? 'hint-frozen' : ''}`}
         onClick={useHint}
         disabled={isDisabled()}
       >
-        使用提示（解锁下一条线索）
+        {isHintFrozen() 
+          ? `❄️ 提示已冻结 (${freezeRemaining()}s)` 
+          : '使用提示（解锁下一条线索）'}
       </button>
       <div class="hint-count">
         剩余提示：{hintsRemaining()} / {maxHints()}
@@ -74,6 +89,24 @@ export default function HintSystem() {
       <div class="hint-penalty">
         每次提示扣分：{diffConfig().hintPenalty}
       </div>
+
+      {wrongPenaltyInfo().consecutiveWrong > 0 && isPlaying() && (
+        <div class={`consecutive-wrong-info penalty-${wrongPenaltyInfo().currentLevel || 'warning'}`}>
+          <div class="wrong-info-title">
+            ⚠️ 连续误选：{wrongPenaltyInfo().consecutiveWrong} 次
+          </div>
+          <div class="wrong-info-stats">
+            累计扣时：{wrongPenaltyInfo().totalTimePenalty}s · 扣分：{wrongPenaltyInfo().totalScorePenalty}
+          </div>
+          {wrongPenaltyInfo().consecutiveWrong >= 2 && (
+            <div class="wrong-info-hint">
+              {wrongPenaltyInfo().consecutiveWrong >= 3 
+                ? '已触发提示冻结！'
+                : '再错1次将触发提示冻结'}
+            </div>
+          )}
+        </div>
+      )}
 
       <div class="section-title powerup-title">
         <span>🎁</span>

@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, CLUE_TEMPLATES } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -95,6 +95,16 @@ const initialStore: GameStore = {
   },
   showStreakPopup: false,
   lastStreakBonus: 0,
+  wrongPenalty: {
+    consecutiveWrong: 0,
+    currentLevel: null,
+    hintFreezeUntil: 0,
+    totalTimePenalty: 0,
+    totalScorePenalty: 0,
+    totalHintFreezes: 0,
+    penaltyHistory: [],
+    maxConsecutiveWrong: 0,
+  },
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -112,6 +122,8 @@ export const [chapterTasks, setChapterTasks] = createSignal<ChapterTask[]>([]);
 export const [currentTheme, setCurrentTheme] = createSignal<ThemeChallenge | null>(null);
 export const [showThemeRewardPopup, setShowThemeRewardPopup] = createSignal<string | null>(null);
 export const [themeHintsUsed, setThemeHintsUsed] = createSignal(0);
+export const [showWrongWarning, setShowWrongWarning] = createSignal<PenaltyLevel | null>(null);
+export const [lastPenaltyInfo, setLastPenaltyInfo] = createSignal<WrongPenaltyEvent | null>(null);
 
 let timerInterval: number | null = null;
 
@@ -746,6 +758,7 @@ export const startChapterGame = (chapterId: string) => {
 export const useHint = () => {
   const state = gameState();
   if (state.hintsRemaining <= 0 || state.state !== 'playing') return;
+  if (isHintFrozen()) return;
 
   const clues = currentClues();
   const lockedClue = clues.find(c => !c.unlocked);
@@ -789,6 +802,7 @@ export const useHint = () => {
 export const useFreeHint = () => {
   const state = gameState();
   if (state.powerUps.freeHints <= 0 || state.state !== 'playing') return;
+  if (isHintFrozen()) return;
 
   const clues = currentClues();
   const lockedClue = clues.find(c => !c.unlocked);
@@ -1049,6 +1063,139 @@ const completeChapter = () => {
   }
 };
 
+const calculatePenaltyForConsecutiveWrong = (
+  consecutiveCount: number,
+  baseTimePenalty: number,
+  baseScorePenalty: number
+): {
+  level: PenaltyLevel;
+  timePenalty: number;
+  scorePenalty: number;
+  hintFreeze: boolean;
+  hintFreezeDuration: number;
+} => {
+  if (consecutiveCount <= 1) {
+    return {
+      level: 'warning',
+      timePenalty: baseTimePenalty,
+      scorePenalty: baseScorePenalty,
+      hintFreeze: false,
+      hintFreezeDuration: 0,
+    };
+  } else if (consecutiveCount === 2) {
+    return {
+      level: 'caution',
+      timePenalty: Math.floor(baseTimePenalty * 1.5),
+      scorePenalty: Math.floor(baseScorePenalty * 1.5),
+      hintFreeze: false,
+      hintFreezeDuration: 0,
+    };
+  } else if (consecutiveCount === 3) {
+    return {
+      level: 'danger',
+      timePenalty: baseTimePenalty * 2,
+      scorePenalty: baseScorePenalty * 2,
+      hintFreeze: true,
+      hintFreezeDuration: 5000,
+    };
+  } else {
+    return {
+      level: 'critical',
+      timePenalty: baseTimePenalty * 3,
+      scorePenalty: baseScorePenalty * 3,
+      hintFreeze: true,
+      hintFreezeDuration: 10000,
+    };
+  }
+};
+
+const handleWrongPenalty = (bookId: string) => {
+  const state = gameState();
+  const book = targetBook();
+  if (!book) return;
+
+  const config = getDifficultyConfig(state.difficultyLevel);
+  const newConsecutiveWrong = state.wrongPenalty.consecutiveWrong + 1;
+  const penalty = calculatePenaltyForConsecutiveWrong(
+    newConsecutiveWrong,
+    config.wrongPenaltyTime,
+    config.wrongPenaltyScore
+  );
+
+  const now = Date.now();
+  const event: WrongPenaltyEvent = {
+    id: `penalty-${now}-${Math.random().toString(36).slice(2, 9)}`,
+    timestamp: now,
+    level: penalty.level,
+    consecutiveCount: newConsecutiveWrong,
+    timePenalty: penalty.timePenalty,
+    scorePenalty: penalty.scorePenalty,
+    hintFrozen: penalty.hintFreeze,
+    hintFreezeDuration: penalty.hintFreezeDuration,
+    targetBookId: book.id,
+    wrongBookId: bookId,
+    currentLevel: state.currentLevel,
+  };
+
+  const hintFreezeUntil = penalty.hintFreeze ? now + penalty.hintFreezeDuration : state.wrongPenalty.hintFreezeUntil;
+
+  setGameState(prev => ({
+    ...prev,
+    consecutiveCorrect: 0,
+    timeRemaining: Math.max(prev.timeRemaining - penalty.timePenalty, 0),
+    score: Math.max(prev.score - penalty.scorePenalty, 0),
+    wrongPenalty: {
+      ...prev.wrongPenalty,
+      consecutiveWrong: newConsecutiveWrong,
+      currentLevel: penalty.level,
+      hintFreezeUntil,
+      totalTimePenalty: prev.wrongPenalty.totalTimePenalty + penalty.timePenalty,
+      totalScorePenalty: prev.wrongPenalty.totalScorePenalty + penalty.scorePenalty,
+      totalHintFreezes: prev.wrongPenalty.totalHintFreezes + (penalty.hintFreeze ? 1 : 0),
+      penaltyHistory: [...prev.wrongPenalty.penaltyHistory, event],
+      maxConsecutiveWrong: Math.max(prev.wrongPenalty.maxConsecutiveWrong, newConsecutiveWrong),
+    },
+  }));
+
+  setLastPenaltyInfo(event);
+  setShowWrongWarning(penalty.level);
+  setPausableTimeout(`wrongWarning-${penalty.level}`, () => {
+    setShowWrongWarning(null);
+  }, 2000);
+};
+
+const resetWrongPenaltyForRound = () => {
+  setGameState(prev => ({
+    ...prev,
+    wrongPenalty: {
+      ...prev.wrongPenalty,
+      consecutiveWrong: 0,
+      currentLevel: null,
+      hintFreezeUntil: 0,
+    },
+  }));
+};
+
+export const isHintFrozen = (): boolean => {
+  const state = gameState();
+  return state.wrongPenalty.hintFreezeUntil > Date.now();
+};
+
+export const getHintFreezeRemaining = (): number => {
+  const state = gameState();
+  const remaining = state.wrongPenalty.hintFreezeUntil - Date.now();
+  return Math.max(0, Math.ceil(remaining / 1000));
+};
+
+export const getWrongPenaltyInfo = () => {
+  const state = gameState();
+  return {
+    ...state.wrongPenalty,
+    hintFrozen: isHintFrozen(),
+    hintFreezeRemaining: getHintFreezeRemaining(),
+  };
+};
+
 export const selectBook = (bookId: string): boolean => {
   const state = gameState();
   if (state.state !== 'playing') return false;
@@ -1065,6 +1212,8 @@ export const selectBook = (bookId: string): boolean => {
   if (bookId === book.id) {
     const findTime = (Date.now() - roundStartTime()) / 1000;
     setLastFindTime(findTime);
+    
+    resetWrongPenaltyForRound();
     
     const powerUpPenalty = calculatePowerUpPenalty(state.powerUps.powerUpsUsedThisRound);
     
@@ -1176,12 +1325,7 @@ export const selectBook = (bookId: string): boolean => {
     return true;
   } else {
     handleStreakOnFail();
-    setGameState(prev => ({
-      ...prev,
-      consecutiveCorrect: 0,
-      timeRemaining: Math.max(prev.timeRemaining - config.wrongPenaltyTime, 0),
-      score: Math.max(prev.score - config.wrongPenaltyScore, 0),
-    }));
+    handleWrongPenalty(bookId);
     return false;
   }
 };
@@ -1855,6 +1999,8 @@ export const selectBookWithRarity = (bookId: string): boolean => {
     const findTime = (Date.now() - roundStartTime()) / 1000;
     setLastFindTime(findTime);
     
+    resetWrongPenaltyForRound();
+    
     const powerUpPenalty = calculatePowerUpPenalty(state.powerUps.powerUpsUsedThisRound);
     
     const rarityConfig = RARITY_CONFIG[book.rarity];
@@ -1964,12 +2110,7 @@ export const selectBookWithRarity = (bookId: string): boolean => {
     return true;
   } else {
     handleStreakOnFail();
-    setGameState(prev => ({
-      ...prev,
-      consecutiveCorrect: 0,
-      timeRemaining: Math.max(prev.timeRemaining - config.wrongPenaltyTime, 0),
-      score: Math.max(prev.score - config.wrongPenaltyScore, 0),
-    }));
+    handleWrongPenalty(bookId);
     return false;
   }
 };
