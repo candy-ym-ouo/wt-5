@@ -51,6 +51,7 @@ const initialStore: GameStore = {
   },
   difficultyAdjustmentReason: null,
   showDifficultyChange: false,
+  lastTimeBonus: 0,
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -314,6 +315,7 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
     },
     difficultyAdjustmentReason: null,
     showDifficultyChange: false,
+    lastTimeBonus: 0,
   }));
 
   startTimer();
@@ -379,6 +381,7 @@ export const startChapterGame = (chapterId: string) => {
     },
     difficultyAdjustmentReason: null,
     showDifficultyChange: false,
+    lastTimeBonus: 0,
   }));
 
   startTimer();
@@ -665,6 +668,7 @@ export const nextRound = () => {
     let newDifficulty = state.difficultyLevel;
     let adjustmentReason: string | null = null;
     let showChange = false;
+    let timeBonus = 0;
 
     if (state.difficultyMode === 'dynamic') {
       const config = getDifficultyConfig(state.difficultyLevel);
@@ -681,6 +685,13 @@ export const nextRound = () => {
       newDifficulty = adjustment.newLevel;
       adjustmentReason = adjustment.reason;
       showChange = adjustment.changed;
+
+      const levelOrder: DifficultyLevel[] = ['easy', 'normal', 'hard', 'expert', 'master'];
+      const oldIdx = levelOrder.indexOf(state.difficultyLevel);
+      const newIdx = levelOrder.indexOf(newDifficulty);
+      if (newIdx > oldIdx) {
+        timeBonus = (newIdx - oldIdx) * 15;
+      }
     }
 
     const newConfig = getDifficultyConfig(newDifficulty);
@@ -688,6 +699,8 @@ export const nextRound = () => {
     setupRound(book);
 
     const newHistory = [...state.difficultyHistory, newDifficulty];
+    const roundCompletionBonus = 10;
+    const totalTimeBonus = roundCompletionBonus + timeBonus;
 
     setGameState(prev => ({
       ...prev,
@@ -701,7 +714,8 @@ export const nextRound = () => {
       difficultyHistory: newHistory,
       difficultyAdjustmentReason: adjustmentReason,
       showDifficultyChange: showChange,
-      timeRemaining: newConfig.gameTime,
+      timeRemaining: prev.timeRemaining + totalTimeBonus,
+      lastTimeBonus: totalTimeBonus,
     }));
 
     if (showChange) {

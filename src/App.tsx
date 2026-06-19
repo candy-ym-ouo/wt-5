@@ -127,7 +127,7 @@ export default function App() {
             {diffInfo().adjustmentReason}
           </div>
           <div class="difficulty-change-stats">
-            <span>⏱️ {diffConfig().gameTime}秒</span>
+            <span>⏱️ +{state().lastTimeBonus}秒奖励</span>
             <span>💡 {diffConfig().initialHints}次提示</span>
             <span>⚡ x{diffConfig().scoreMultiplier}倍率</span>
           </div>

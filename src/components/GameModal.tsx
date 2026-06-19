@@ -260,6 +260,16 @@ export default function GameModal() {
                 {state().difficultyMode === 'dynamic' && <span class="result-diff-mode">🔄 动态</span>}
               </div>
             )}
+
+            {!isChapterMode() && (
+              <div class="next-round-bonus">
+                <span class="bonus-icon">⏱️</span>
+                <span class="bonus-text">完成回合奖励：进入下一局时 +10 秒</span>
+                {state().difficultyMode === 'dynamic' && (
+                  <span class="bonus-hint">（难度提升可获得额外时间奖励）</span>
+                )}
+              </div>
+            )}
             
             <div class="score-big">+{state().score} 分</div>
             

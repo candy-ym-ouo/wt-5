@@ -150,4 +150,5 @@ export interface GameStore {
   };
   difficultyAdjustmentReason: string | null;
   showDifficultyChange: boolean;
+  lastTimeBonus: number;
 }
