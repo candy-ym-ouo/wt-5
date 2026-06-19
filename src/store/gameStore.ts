@@ -35,8 +35,19 @@ import {
   saveThemeProgress,
   getUnlockedThemeRewardIds,
   saveUnlockedThemeRewardIds,
+  getSavedStreak,
+  saveStreak,
+  clearSavedStreak,
 } from '../utils/storage';
 import { THEMES, getThemeById, selectBookByTheme, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
+import {
+  STREAK_REWARDS,
+  getStreakTitle,
+  getStreakReward,
+  getStreakBonusMultiplier,
+  calculateStreakBonusScore,
+  STREAK_INHERIT_COST,
+} from '../data/streaks';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -73,6 +84,17 @@ const initialStore: GameStore = {
   currentThemeId: null,
   themeFoundBooks: [],
   themeScore: 0,
+  streak: {
+    currentStreak: 0,
+    bestStreak: 0,
+    bestStreakDate: 0,
+    streakStartTime: 0,
+    totalStreakBonusScore: 0,
+    currentTitleId: 'streak_newbie',
+    inheritedStreak: false,
+  },
+  showStreakPopup: false,
+  lastStreakBonus: 0,
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -303,6 +325,48 @@ export const checkAchievements = () => {
   }
 };
 
+const checkStreakAchievements = (
+  currentStreak: number
+) => {
+  const state = gameState();
+  const unlocked = [...state.unlockedAchievements];
+  let newAchievement: string | null = null;
+
+  const streakAchievements = [
+    { id: 'streak_3', min: 3 },
+    { id: 'streak_5', min: 5 },
+    { id: 'streak_8', min: 8 },
+    { id: 'streak_12', min: 12 },
+    { id: 'streak_16', min: 16 },
+    { id: 'streak_20', min: 20 },
+    { id: 'streak_30', min: 30 },
+  ];
+
+  for (const ach of streakAchievements) {
+    if (currentStreak >= ach.min && !unlocked.includes(ach.id)) {
+      unlocked.push(ach.id);
+      newAchievement = ach.id;
+    }
+  }
+
+  if (currentStreak >= 20 && !unlocked.includes('streak_master')) {
+    unlocked.push('streak_master');
+    newAchievement = 'streak_master';
+  }
+
+  if (unlocked.length !== state.unlockedAchievements.length) {
+    setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
+    saveUnlockedAchievements(unlocked);
+    if (newAchievement) {
+      const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
+      if (ach) {
+        setShowAchievementPopup(ach.title);
+        setTimeout(() => setShowAchievementPopup(null), 3000);
+      }
+    }
+  }
+};
+
 const startTimer = () => {
   if (timerInterval) clearInterval(timerInterval);
   timerInterval = window.setInterval(() => {
@@ -323,12 +387,28 @@ const startTimer = () => {
             consecutiveCorrect: gameState().consecutiveCorrect,
           });
           checkAchievements();
+          saveCurrentStreak();
         }, 0);
         return { ...prev, timeRemaining: 0, state: 'lost' };
       }
       return { ...prev, timeRemaining: newTime };
     });
   }, 1000);
+};
+
+const saveCurrentStreak = () => {
+  const state = gameState();
+  if (state.streak.currentStreak > 0 && state.gameMode === 'classic') {
+    saveStreak({
+      currentStreak: state.streak.currentStreak,
+      bestStreak: state.streak.bestStreak,
+      bestStreakDate: state.streak.bestStreakDate,
+      currentTitleId: state.streak.currentTitleId || 'streak_newbie',
+      lastScore: state.score,
+      lastDifficulty: state.difficultyLevel,
+      savedAt: Date.now(),
+    });
+  }
 };
 
 const setupRound = (book: Book) => {
@@ -435,6 +515,98 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
   }));
 
   startTimer();
+};
+
+export const startGameWithStreak = (inheritStreak: boolean = false) => {
+  const savedStreak = getSavedStreak();
+  
+  if (inheritStreak && savedStreak && savedStreak.currentStreak > 0) {
+    const diffLevel = savedStreak.lastDifficulty as DifficultyLevel || DEFAULT_DIFFICULTY;
+    const diffMode: DifficultyMode = 'dynamic';
+    const config = getDifficultyConfig(diffLevel);
+
+    const book = selectRandomTargetByDifficulty(diffLevel, []);
+    setupRound(book);
+    setFoundGenres([]);
+    
+    const newGamesPlayed = incrementGamesPlayed();
+    setGamesPlayed(newGamesPlayed);
+
+    const initialScore = Math.floor(savedStreak.lastScore * (1 - STREAK_INHERIT_COST.scorePenaltyPercent / 100));
+    const initialTime = Math.floor(config.gameTime * (1 - STREAK_INHERIT_COST.timePenaltyPercent / 100));
+
+    const streakTitle = getStreakTitle(savedStreak.currentStreak);
+
+    setGameState(prev => ({
+      ...prev,
+      state: 'playing',
+      score: initialScore,
+      timeRemaining: initialTime,
+      hintsRemaining: config.initialHints,
+      hintsUsed: 0,
+      currentLevel: 1,
+      targetBookId: book.id,
+      unlockedClues: [currentClues()[0]?.id || ''],
+      foundBooks: [],
+      consecutiveCorrect: 0,
+      gameMode: 'classic',
+      currentChapterId: null,
+      currentTaskIndex: 0,
+      chapterScore: 0,
+      chapterTimeUsed: 0,
+      chapterHintsUsed: 0,
+      difficultyLevel: diffLevel,
+      difficultyMode: diffMode,
+      difficultyHistory: [diffLevel],
+      roundStats: {
+        findTimes: [],
+        hintsUsedPerRound: [],
+      },
+      difficultyAdjustmentReason: null,
+      showDifficultyChange: false,
+      lastTimeBonus: 0,
+      powerUps: createInitialPowerUpState(diffLevel),
+      streak: {
+        currentStreak: savedStreak.currentStreak,
+        bestStreak: Math.max(savedStreak.bestStreak, savedStreak.currentStreak),
+        bestStreakDate: savedStreak.bestStreakDate,
+        streakStartTime: Date.now(),
+        totalStreakBonusScore: 0,
+        currentTitleId: streakTitle.id,
+        inheritedStreak: true,
+      },
+      showStreakPopup: false,
+      lastStreakBonus: 0,
+    }));
+
+    const unlocked = [...gameState().unlockedAchievements];
+    if (!unlocked.includes('streak_inherit')) {
+      unlocked.push('streak_inherit');
+      setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
+      saveUnlockedAchievements(unlocked);
+      const ach = ACHIEVEMENTS.find(a => a.id === 'streak_inherit');
+      if (ach) {
+        setTimeout(() => {
+          setShowAchievementPopup(ach.title);
+          setTimeout(() => setShowAchievementPopup(null), 3000);
+        }, 1000);
+      }
+    }
+
+    clearSavedStreak();
+    startTimer();
+  } else {
+    startGame();
+  }
+};
+
+export const hasSavedStreak = (): boolean => {
+  const saved = getSavedStreak();
+  return saved !== null && saved.currentStreak > 0;
+};
+
+export const getSavedStreakInfo = () => {
+  return getSavedStreak();
 };
 
 export const startChapterGame = (chapterId: string) => {
@@ -846,12 +1018,19 @@ export const selectBook = (bookId: string): boolean => {
       hintsUsedPerRound: [...state.roundStats.hintsUsedPerRound, state.hintsUsed],
     };
 
+    const streakResult = handleStreakOnSuccess(score);
+    const totalScore = score + streakResult.streakBonus;
+    const newStreakCount = state.streak.currentStreak + 1;
+    const newTitleId = streakResult.newTitle || state.streak.currentTitleId;
+    const bestStreak = Math.max(state.streak.bestStreak, newStreakCount);
+    const bestStreakDate = bestStreak > state.streak.bestStreak ? Date.now() : state.streak.bestStreakDate;
+
     if (state.gameMode === 'chapter') {
       const task = currentTask();
       if (task) {
         setChapterTasks(prev => prev.map(t =>
           t.id === task.id
-            ? { ...t, completed: true, scoreEarned: score, timeUsed: findTime, hintsUsed: state.hintsUsed }
+            ? { ...t, completed: true, scoreEarned: totalScore, timeUsed: findTime, hintsUsed: state.hintsUsed }
             : t
         ));
 
@@ -860,14 +1039,24 @@ export const selectBook = (bookId: string): boolean => {
         
         setGameState(prev => ({
           ...prev,
-          score: prev.score + score,
+          score: prev.score + totalScore,
           foundBooks: [...prev.foundBooks, bookId],
           consecutiveCorrect: prev.consecutiveCorrect + 1,
-          chapterScore: prev.chapterScore + score,
+          chapterScore: prev.chapterScore + totalScore,
           chapterTimeUsed: prev.chapterTimeUsed + findTime,
           chapterHintsUsed: prev.chapterHintsUsed + prev.hintsUsed,
           roundStats: newRoundStats,
           state: nextTaskIndex >= tasks.length ? 'chapter_complete' : 'won',
+          streak: {
+            ...prev.streak,
+            currentStreak: newStreakCount,
+            bestStreak,
+            bestStreakDate,
+            totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+            currentTitleId: newTitleId,
+            streakStartTime: prev.streak.streakStartTime || Date.now(),
+          },
+          lastStreakBonus: streakResult.streakBonus,
         }));
 
         if (timerInterval) clearInterval(timerInterval);
@@ -880,6 +1069,7 @@ export const selectBook = (bookId: string): boolean => {
           consecutiveCorrect: gameState().consecutiveCorrect,
         });
         checkAchievements();
+        checkStreakAchievements(newStreakCount);
 
         if (nextTaskIndex >= tasks.length) {
           setTimeout(completeChapter, 500);
@@ -888,11 +1078,21 @@ export const selectBook = (bookId: string): boolean => {
     } else {
       setGameState(prev => ({
         ...prev,
-        score: prev.score + score,
+        score: prev.score + totalScore,
         foundBooks: [...prev.foundBooks, bookId],
         consecutiveCorrect: prev.consecutiveCorrect + 1,
         roundStats: newRoundStats,
         state: 'won',
+        streak: {
+          ...prev.streak,
+          currentStreak: newStreakCount,
+          bestStreak,
+          bestStreakDate,
+          totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+          currentTitleId: newTitleId,
+          streakStartTime: prev.streak.streakStartTime || Date.now(),
+        },
+        lastStreakBonus: streakResult.streakBonus,
       }));
 
       if (timerInterval) clearInterval(timerInterval);
@@ -904,9 +1104,11 @@ export const selectBook = (bookId: string): boolean => {
         consecutiveCorrect: gameState().consecutiveCorrect,
       });
       checkAchievements();
+      checkStreakAchievements(newStreakCount);
     }
     return true;
   } else {
+    handleStreakOnFail();
     setGameState(prev => ({
       ...prev,
       consecutiveCorrect: 0,
@@ -915,6 +1117,96 @@ export const selectBook = (bookId: string): boolean => {
     }));
     return false;
   }
+};
+
+const handleStreakOnSuccess = (baseScore: number): {
+  streakBonus: number;
+  timeBonus: number;
+  hintBonus: number;
+  newTitle: string | null;
+  achievementId: string | null;
+} => {
+  const state = gameState();
+  const newStreak = state.streak.currentStreak + 1;
+  
+  let streakBonus = 0;
+  let timeBonus = 0;
+  let hintBonus = 0;
+  let newTitle: string | null = null;
+  let achievementId: string | null = null;
+
+  streakBonus = calculateStreakBonusScore(baseScore, newStreak);
+
+  const reward = getStreakReward(newStreak);
+  if (reward) {
+    streakBonus += reward.bonusScore;
+    timeBonus = reward.bonusTime;
+    hintBonus = reward.bonusHints;
+    achievementId = reward.achievementId || null;
+    
+    const oldTitle = state.streak.currentTitleId;
+    const newTitleInfo = getStreakTitle(newStreak);
+    if (newTitleInfo.id !== oldTitle) {
+      newTitle = newTitleInfo.id;
+    }
+  } else {
+    const newTitleInfo = getStreakTitle(newStreak);
+    if (newTitleInfo.id !== state.streak.currentTitleId) {
+      newTitle = newTitleInfo.id;
+    }
+  }
+
+  return { streakBonus, timeBonus, hintBonus, newTitle, achievementId };
+};
+
+const handleStreakOnFail = () => {
+  const state = gameState();
+  if (state.streak.currentStreak === 0) return;
+
+  const bestStreak = Math.max(state.streak.bestStreak, state.streak.currentStreak);
+  const bestStreakDate = bestStreak > state.streak.bestStreak 
+    ? Date.now() 
+    : state.streak.bestStreakDate;
+
+  setGameState(prev => ({
+    ...prev,
+    streak: {
+      ...prev.streak,
+      currentStreak: 0,
+      bestStreak,
+      bestStreakDate,
+      currentTitleId: 'streak_newbie',
+      inheritedStreak: false,
+    },
+  }));
+};
+
+export const getStreakInfo = () => {
+  const state = gameState();
+  const title = getStreakTitle(state.streak.currentStreak);
+  const nextReward = STREAK_REWARDS.find(r => r.minStreak > state.streak.currentStreak);
+  const multiplier = getStreakBonusMultiplier(state.streak.currentStreak);
+  
+  return {
+    currentStreak: state.streak.currentStreak,
+    bestStreak: state.streak.bestStreak,
+    title,
+    nextReward,
+    multiplier,
+    totalBonusScore: state.streak.totalStreakBonusScore,
+    inherited: state.streak.inheritedStreak,
+  };
+};
+
+export const showStreakNotification = () => {
+  setGameState(prev => ({ ...prev, showStreakPopup: true }));
+  setTimeout(() => {
+    setGameState(prev => ({ ...prev, showStreakPopup: false }));
+  }, 3000);
+};
+
+export const dismissStreakPopup = () => {
+  setGameState(prev => ({ ...prev, showStreakPopup: false }));
 };
 
 export const nextRound = () => {
@@ -942,6 +1234,10 @@ export const nextRound = () => {
       peekInterval = null;
     }
 
+    const streakReward = getStreakReward(state.streak.currentStreak);
+    const streakTimeBonus = streakReward?.bonusTime || 0;
+    const streakHintBonus = streakReward?.bonusHints || 0;
+
     setGameState(prev => ({
       ...prev,
       state: 'playing',
@@ -949,9 +1245,10 @@ export const nextRound = () => {
       currentTaskIndex: nextTaskIndex,
       targetBookId: book.id,
       unlockedClues: [currentClues()[0]?.id || ''],
-      hintsRemaining: Math.min(prev.hintsRemaining + 1, config.initialHints),
+      hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus, config.initialHints + streakHintBonus),
       hintsUsed: 0,
       showDifficultyChange: false,
+      timeRemaining: prev.timeRemaining + streakTimeBonus,
       powerUps: {
         ...prev.powerUps,
         peekActive: false,
@@ -1003,7 +1300,12 @@ export const nextRound = () => {
 
     const newHistory = [...state.difficultyHistory, newDifficulty];
     const roundCompletionBonus = 10;
-    const totalTimeBonus = roundCompletionBonus + timeBonus;
+    
+    const streakReward = getStreakReward(state.streak.currentStreak);
+    const streakTimeBonus = streakReward?.bonusTime || 0;
+    const streakHintBonus = streakReward?.bonusHints || 0;
+    
+    const totalTimeBonus = roundCompletionBonus + timeBonus + streakTimeBonus;
 
     if (peekInterval) {
       clearInterval(peekInterval);
@@ -1016,7 +1318,7 @@ export const nextRound = () => {
       currentLevel: prev.currentLevel + 1,
       targetBookId: book.id,
       unlockedClues: [currentClues()[0]?.id || ''],
-      hintsRemaining: Math.min(prev.hintsRemaining + 1, newConfig.initialHints),
+      hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus, newConfig.initialHints + streakHintBonus),
       hintsUsed: 0,
       difficultyLevel: newDifficulty,
       difficultyHistory: newHistory,
@@ -1427,7 +1729,14 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       powerUpPenalty
     );
     
-    const score = Math.floor(baseScore * rarityMultiplier);
+    const baseScoreWithRarity = Math.floor(baseScore * rarityMultiplier);
+    
+    const streakResult = handleStreakOnSuccess(baseScoreWithRarity);
+    const totalScore = baseScoreWithRarity + streakResult.streakBonus;
+    const newStreakCount = state.streak.currentStreak + 1;
+    const newTitleId = streakResult.newTitle || state.streak.currentTitleId;
+    const bestStreak = Math.max(state.streak.bestStreak, newStreakCount);
+    const bestStreakDate = bestStreak > state.streak.bestStreak ? Date.now() : state.streak.bestStreakDate;
 
     const newFoundGenres = [...foundGenres(), book.genre];
     setFoundGenres(newFoundGenres);
@@ -1445,13 +1754,23 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       
       setGameState(prev => ({
         ...prev,
-        score: prev.score + score,
+        score: prev.score + totalScore,
         foundBooks: [...prev.foundBooks, bookId],
         consecutiveCorrect: prev.consecutiveCorrect + 1,
         themeFoundBooks: newThemeFoundBooks,
-        themeScore: prev.themeScore + score,
+        themeScore: prev.themeScore + totalScore,
         roundStats: newRoundStats,
         state: newThemeFoundBooks.length >= (theme?.requiredBooks || theme?.bookIds.length || 0) ? 'won' : 'won',
+        streak: {
+          ...prev.streak,
+          currentStreak: newStreakCount,
+          bestStreak,
+          bestStreakDate,
+          totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+          currentTitleId: newTitleId,
+          streakStartTime: prev.streak.streakStartTime || Date.now(),
+        },
+        lastStreakBonus: streakResult.streakBonus,
       }));
 
       if (timerInterval) clearInterval(timerInterval);
@@ -1464,17 +1783,28 @@ export const selectBookWithRarity = (bookId: string): boolean => {
         consecutiveCorrect: gameState().consecutiveCorrect,
       });
       checkAchievements();
+      checkStreakAchievements(newStreakCount);
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
     } else {
       setGameState(prev => ({
         ...prev,
-        score: prev.score + score,
+        score: prev.score + totalScore,
         foundBooks: [...prev.foundBooks, bookId],
         consecutiveCorrect: prev.consecutiveCorrect + 1,
         roundStats: newRoundStats,
         state: 'won',
+        streak: {
+          ...prev.streak,
+          currentStreak: newStreakCount,
+          bestStreak,
+          bestStreakDate,
+          totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+          currentTitleId: newTitleId,
+          streakStartTime: prev.streak.streakStartTime || Date.now(),
+        },
+        lastStreakBonus: streakResult.streakBonus,
       }));
 
       if (timerInterval) clearInterval(timerInterval);
@@ -1486,12 +1816,14 @@ export const selectBookWithRarity = (bookId: string): boolean => {
         consecutiveCorrect: gameState().consecutiveCorrect,
       });
       checkAchievements();
+      checkStreakAchievements(newStreakCount);
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
     }
     return true;
   } else {
+    handleStreakOnFail();
     setGameState(prev => ({
       ...prev,
       consecutiveCorrect: 0,

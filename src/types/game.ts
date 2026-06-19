@@ -78,6 +78,8 @@ export interface LeaderboardEntry {
   seasonId?: string;
   weekNumber?: number;
   difficulty?: DifficultyLevel;
+  streak?: number;
+  bestStreak?: number;
 }
 
 export interface SeasonInfo {
@@ -217,6 +219,34 @@ export interface ChapterProgress {
   completedAt?: number;
 }
 
+export interface StreakTitle {
+  id: string;
+  title: string;
+  icon: string;
+  minStreak: number;
+  color: string;
+}
+
+export interface StreakReward {
+  id: string;
+  minStreak: number;
+  bonusScore: number;
+  bonusTime: number;
+  bonusHints: number;
+  titleId?: string;
+  achievementId?: string;
+}
+
+export interface StreakState {
+  currentStreak: number;
+  bestStreak: number;
+  bestStreakDate: number;
+  streakStartTime: number;
+  totalStreakBonusScore: number;
+  currentTitleId: string | null;
+  inheritedStreak: boolean;
+}
+
 export interface GameStore {
   state: GameState;
   score: number;
@@ -249,4 +279,7 @@ export interface GameStore {
   currentThemeId: string | null;
   themeFoundBooks: string[];
   themeScore: number;
+  streak: StreakState;
+  showStreakPopup: boolean;
+  lastStreakBonus: number;
 }

@@ -54,6 +54,8 @@ export default function Leaderboard(props: LeaderboardProps) {
       hintsUsed: state().hintsUsed,
       date: Date.now(),
       difficulty: state().difficultyLevel,
+      streak: state().streak?.currentStreak || 0,
+      bestStreak: state().streak?.bestStreak || 0,
     };
 
     saveLeaderboardEntry(entry);
@@ -120,7 +122,12 @@ export default function Leaderboard(props: LeaderboardProps) {
                     <span class={`leaderboard-rank ${getRankClass(index())}`}>
                       #{index() + 1}
                     </span>
-                    <span class="leaderboard-name">{entry.playerName}</span>
+                    <span class="leaderboard-name">
+                      {entry.playerName}
+                      {entry.streak && entry.streak >= 3 && (
+                        <span class="leaderboard-streak"> 🔥 {entry.streak}</span>
+                      )}
+                    </span>
                     <span class="leaderboard-meta">{formatDate(entry.date)}</span>
                     <span class="leaderboard-score">{entry.score} 分</span>
                   </div>
@@ -134,6 +141,9 @@ export default function Leaderboard(props: LeaderboardProps) {
             {currentScore() > 0 && !hasSubmitted() && (
               <div class="section-sm">
                 <div class="text-gold">你的分数：{currentScore()} 分</div>
+                {state().streak?.currentStreak > 0 && (
+                  <div class="text-orange">当前连胜：{state().streak.currentStreak} 局 🔥</div>
+                )}
                 <input
                   type="text"
                   class="input-field"
@@ -158,7 +168,12 @@ export default function Leaderboard(props: LeaderboardProps) {
                     <span class={`leaderboard-rank ${getRankClass(index())}`}>
                       #{index() + 1}
                     </span>
-                    <span class="leaderboard-name">{entry.playerName}</span>
+                    <span class="leaderboard-name">
+                      {entry.playerName}
+                      {entry.bestStreak && entry.bestStreak >= 5 && (
+                        <span class="leaderboard-best-streak"> 🏆 {entry.bestStreak}</span>
+                      )}
+                    </span>
                     <span class="leaderboard-meta">
                       W{entry.weekNumber ?? '-'}
                     </span>
@@ -174,6 +189,9 @@ export default function Leaderboard(props: LeaderboardProps) {
             {currentScore() > 0 && !hasSubmitted() && (
               <div class="section-sm">
                 <div class="text-gold">你的分数：{currentScore()} 分</div>
+                {state().streak?.bestStreak > 0 && (
+                  <div class="text-purple">最高连胜：{state().streak.bestStreak} 局 🏆</div>
+                )}
                 <input
                   type="text"
                   class="input-field"

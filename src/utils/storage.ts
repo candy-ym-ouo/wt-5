@@ -11,6 +11,7 @@ export const STORAGE_VERSION_KEY = 'old_bookstore_storage_version';
 export const THEME_PROGRESS_KEY = 'old_bookstore_theme_progress';
 export const THEME_REWARDS_KEY = 'old_bookstore_theme_rewards';
 export const CURRENT_THEME_KEY = 'old_bookstore_current_theme';
+export const STREAK_KEY = 'old_bookstore_streak';
 
 const CURRENT_STORAGE_VERSION = 3;
 
@@ -422,4 +423,41 @@ export const clearThemeProgress = (): void => {
   localStorage.removeItem(THEME_PROGRESS_KEY);
   localStorage.removeItem(CURRENT_THEME_KEY);
   localStorage.removeItem(THEME_REWARDS_KEY);
+};
+
+export interface SavedStreakState {
+  currentStreak: number;
+  bestStreak: number;
+  bestStreakDate: number;
+  currentTitleId: string;
+  lastScore: number;
+  lastDifficulty: string;
+  savedAt: number;
+}
+
+export const getSavedStreak = (): SavedStreakState | null => {
+  try {
+    const data = localStorage.getItem(STREAK_KEY);
+    if (data) {
+      const saved = JSON.parse(data) as SavedStreakState;
+      const oneDay = 24 * 60 * 60 * 1000;
+      if (Date.now() - saved.savedAt < oneDay) {
+        return saved;
+      }
+    }
+  } catch {}
+  return null;
+};
+
+export const saveStreak = (streak: SavedStreakState): void => {
+  try {
+    localStorage.setItem(STREAK_KEY, JSON.stringify({
+      ...streak,
+      savedAt: Date.now(),
+    }));
+  } catch {}
+};
+
+export const clearSavedStreak = (): void => {
+  localStorage.removeItem(STREAK_KEY);
 };
