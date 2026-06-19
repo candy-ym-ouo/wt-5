@@ -1600,3 +1600,244 @@ body {
   margin: 16px 0;
 }
 
+.season-leaderboard-modal {
+  max-width: 600px !important;
+}
+
+.season-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.season-title {
+  font-size: 1.2rem;
+  color: #ffd700;
+  font-weight: bold;
+}
+
+.season-info {
+  font-size: 0.85rem;
+  color: #a08060;
+  background: rgba(255, 215, 0, 0.1);
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.season-tabs {
+  flex-wrap: wrap;
+}
+
+.season-tabs .tab-button {
+  font-size: 0.8rem;
+  padding: 8px 6px;
+}
+
+.leaderboard-meta {
+  font-size: 0.75rem;
+  color: #a08060;
+  min-width: 36px;
+  text-align: center;
+}
+
+.settlement-ranking {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 12px 0;
+}
+
+.new-record-banner {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.record-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  animation: recordPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes recordPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.05); }
+}
+
+.score-record {
+  background: linear-gradient(135deg, #ffd700, #daa520);
+  color: #3d2317;
+}
+
+.weekly-record {
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  color: #fff;
+}
+
+.season-record {
+  background: linear-gradient(135deg, #a855f7, #7c3aed);
+  color: #fff;
+}
+
+.ranking-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.ranking-row:last-child {
+  border-bottom: none;
+}
+
+.ranking-label {
+  font-size: 0.8rem;
+  color: #a08060;
+}
+
+.ranking-value {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #d4a574;
+}
+
+.personal-best-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.personal-best-card {
+  background: rgba(92, 58, 33, 0.4);
+  border: 1px solid #5c3a21;
+  border-radius: 10px;
+  padding: 14px 10px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.personal-best-card.highlight {
+  border-color: #ffd700;
+  background: rgba(255, 215, 0, 0.1);
+  grid-column: span 3;
+}
+
+.pb-icon {
+  font-size: 1.6rem;
+  margin-bottom: 6px;
+}
+
+.pb-label {
+  font-size: 0.7rem;
+  color: #a08060;
+  margin-bottom: 4px;
+}
+
+.pb-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #d4a574;
+}
+
+.highlight .pb-value {
+  font-size: 1.5rem;
+  color: #ffd700;
+}
+
+.pb-date {
+  font-size: 0.65rem;
+  color: rgba(160, 128, 96, 0.6);
+  margin-top: 4px;
+}
+
+.personal-season-weekly {
+  display: flex;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.psw-section {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+}
+
+.psw-title {
+  font-size: 0.8rem;
+  color: #a08060;
+  margin-bottom: 6px;
+}
+
+.psw-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #ffd700;
+}
+
+.achievements-stats-bar {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ach-stat {
+  text-align: center;
+}
+
+.ach-stat-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #d4a574;
+}
+
+.ach-stat-label {
+  font-size: 0.7rem;
+  color: #a08060;
+}
+
+.ach-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: #2c1810;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ach-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffd700 0%, #daa520 100%);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+@media (max-width: 480px) {
+  .personal-best-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .personal-best-card.highlight {
+    grid-column: span 2;
+  }
+
+  .season-tabs .tab-button {
+    font-size: 0.75rem;
+    padding: 6px 4px;
+  }
+}
+

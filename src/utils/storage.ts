@@ -1,10 +1,91 @@
-import type { LeaderboardEntry, ChapterProgress } from '../types/game';
+import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest } from '../types/game';
 
 export const LEADERBOARD_KEY = 'old_bookstore_leaderboard';
 export const ACHIEVEMENTS_KEY = 'old_bookstore_achievements';
 export const GAME_STATS_KEY = 'old_bookstore_stats';
 export const CHAPTER_PROGRESS_KEY = 'old_bookstore_chapter_progress';
 export const CURRENT_CHAPTER_KEY = 'old_bookstore_current_chapter';
+export const SEASON_KEY = 'old_bookstore_season';
+export const PERSONAL_BEST_KEY = 'old_bookstore_personal_best';
+export const STORAGE_VERSION_KEY = 'old_bookstore_storage_version';
+
+const CURRENT_STORAGE_VERSION = 2;
+
+function getWeekNumber(date: number): number {
+  const d = new Date(date);
+  const start = new Date(d.getFullYear(), 0, 1);
+  const diff = d.getTime() - start.getTime();
+  const oneDay = 86400000;
+  const dayOfYear = Math.floor(diff / oneDay) + 1;
+  return Math.ceil(dayOfYear / 7);
+}
+
+function getWeekStartEnd(year: number, week: number): { start: number; end: number } {
+  const jan1 = new Date(year, 0, 1);
+  const dayOfWeek = jan1.getDay();
+  const offset = dayOfWeek <= 4 ? 1 - dayOfWeek : 8 - dayOfWeek;
+  const weekStart = new Date(year, 0, offset + (week - 1) * 7);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+  weekEnd.setMilliseconds(-1);
+  return { start: weekStart.getTime(), end: weekEnd.getTime() };
+}
+
+export function getCurrentSeason(): SeasonInfo {
+  try {
+    const data = localStorage.getItem(SEASON_KEY);
+    if (data) {
+      const season = JSON.parse(data) as SeasonInfo;
+      if (Date.now() <= season.endDate) {
+        return season;
+      }
+    }
+  } catch {}
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const quarter = Math.floor(now.getMonth() / 3);
+  const seasonNames = ['春', '夏', '秋', '冬'];
+  const seasonStart = new Date(year, quarter * 3, 1);
+  const seasonEnd = new Date(year, (quarter + 1) * 3, 0, 23, 59, 59, 999);
+
+  const season: SeasonInfo = {
+    id: `${year}-Q${quarter + 1}`,
+    name: `${year}${seasonNames[quarter]}季`,
+    startDate: seasonStart.getTime(),
+    endDate: seasonEnd.getTime(),
+  };
+
+  localStorage.setItem(SEASON_KEY, JSON.stringify(season));
+  return season;
+}
+
+export function getCurrentWeekNumber(): number {
+  return getWeekNumber(Date.now());
+}
+
+export function getWeeklyLeaderboard(weekNumber?: number): LeaderboardEntry[] {
+  const all = getLeaderboard();
+  const week = weekNumber ?? getCurrentWeekNumber();
+  const now = new Date();
+  const { start, end } = getWeekStartEnd(now.getFullYear(), week);
+  return all.filter(e => e.date >= start && e.date <= end);
+}
+
+export function getSeasonLeaderboard(seasonId?: string): LeaderboardEntry[] {
+  const all = getLeaderboard();
+  const season = seasonId ?? getCurrentSeason().id;
+  return all.filter(e => e.seasonId === season || (!e.seasonId && isDateInSeason(e.date, season)));
+}
+
+function isDateInSeason(date: number, seasonId: string): boolean {
+  const parts = seasonId.split('-Q');
+  const year = parseInt(parts[0]);
+  const quarter = parseInt(parts[1]) - 1;
+  const start = new Date(year, quarter * 3, 1).getTime();
+  const end = new Date(year, (quarter + 1) * 3, 0, 23, 59, 59, 999).getTime();
+  return date >= start && date <= end;
+}
 
 export const getLeaderboard = (): LeaderboardEntry[] => {
   try {
@@ -16,13 +97,109 @@ export const getLeaderboard = (): LeaderboardEntry[] => {
 };
 
 export const saveLeaderboardEntry = (entry: LeaderboardEntry): LeaderboardEntry[] => {
+  const season = getCurrentSeason();
+  const entryWithMeta: LeaderboardEntry = {
+    ...entry,
+    seasonId: season.id,
+    weekNumber: getWeekNumber(entry.date),
+  };
+
   const leaderboard = getLeaderboard();
-  leaderboard.push(entry);
+  leaderboard.push(entryWithMeta);
   leaderboard.sort((a, b) => b.score - a.score);
-  const topTen = leaderboard.slice(0, 10);
-  localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(topTen));
-  return topTen;
+  const topFifty = leaderboard.slice(0, 50);
+  localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(topFifty));
+  return topFifty;
 };
+
+export function getPersonalBest(): PersonalBest {
+  try {
+    const data = localStorage.getItem(PERSONAL_BEST_KEY);
+    if (data) return JSON.parse(data);
+  } catch {}
+  return {
+    highestScore: 0,
+    highestScoreDate: 0,
+    totalGamesPlayed: 0,
+    totalBooksFound: 0,
+    fastestFind: 0,
+    fastestFindDate: 0,
+    fewestHintsScore: 0,
+    fewestHintsDate: 0,
+    fewestHintsCount: -1,
+    longestStreak: 0,
+    longestStreakDate: 0,
+    weeklyBestScores: {},
+    seasonBestScores: {},
+  };
+}
+
+export function updatePersonalBest(update: {
+  score: number;
+  booksFound: number;
+  findTime: number;
+  hintsUsed: number;
+  consecutiveCorrect: number;
+}): PersonalBest {
+  const best = getPersonalBest();
+  const now = Date.now();
+  const week = getCurrentWeekNumber();
+  const season = getCurrentSeason();
+
+  if (update.score > best.highestScore) {
+    best.highestScore = update.score;
+    best.highestScoreDate = now;
+  }
+
+  best.totalGamesPlayed += 1;
+  best.totalBooksFound += update.booksFound;
+
+  if (update.findTime > 0 && (best.fastestFind === 0 || update.findTime < best.fastestFind)) {
+    best.fastestFind = update.findTime;
+    best.fastestFindDate = now;
+  }
+
+  if (best.fewestHintsCount < 0 || update.hintsUsed < best.fewestHintsCount) {
+    best.fewestHintsScore = update.score;
+    best.fewestHintsDate = now;
+    best.fewestHintsCount = update.hintsUsed;
+  }
+
+  if (update.consecutiveCorrect > best.longestStreak) {
+    best.longestStreak = update.consecutiveCorrect;
+    best.longestStreakDate = now;
+  }
+
+  if (!best.weeklyBestScores[week] || update.score > best.weeklyBestScores[week]) {
+    best.weeklyBestScores[week] = update.score;
+  }
+
+  if (!best.seasonBestScores[season.id] || update.score > best.seasonBestScores[season.id]) {
+    best.seasonBestScores[season.id] = update.score;
+  }
+
+  localStorage.setItem(PERSONAL_BEST_KEY, JSON.stringify(best));
+  return best;
+}
+
+export function isNewPersonalBest(score: number): { score: boolean; weekly: boolean; season: boolean } {
+  const best = getPersonalBest();
+  const week = getCurrentWeekNumber();
+  const season = getCurrentSeason();
+  return {
+    score: score > best.highestScore,
+    weekly: !best.weeklyBestScores[week] || score > best.weeklyBestScores[week],
+    season: !best.seasonBestScores[season.id] || score > best.seasonBestScores[season.id],
+  };
+}
+
+export function getPersonalBestRank(score: number): number {
+  const all = getLeaderboard().sort((a, b) => b.score - a.score);
+  for (let i = 0; i < all.length; i++) {
+    if (all[i].score <= score) return i + 1;
+  }
+  return all.length + 1;
+}
 
 export const getUnlockedAchievements = (): string[] => {
   try {
@@ -133,3 +310,53 @@ export const clearChapterProgress = (): void => {
   localStorage.removeItem(CHAPTER_PROGRESS_KEY);
   localStorage.removeItem(CURRENT_CHAPTER_KEY);
 };
+
+function migrateFromV1ToV2(): void {
+  try {
+    const data = localStorage.getItem(LEADERBOARD_KEY);
+    if (!data) return;
+    const entries: LeaderboardEntry[] = JSON.parse(data);
+    if (entries.length === 0) return;
+
+    const needsMigration = entries.some(e => !e.seasonId);
+    if (!needsMigration) return;
+
+    const migrated = entries.map(entry => {
+      if (entry.seasonId) return entry;
+      const entryDate = new Date(entry.date);
+      const year = entryDate.getFullYear();
+      const quarter = Math.floor(entryDate.getMonth() / 3);
+      const seasonId = `${year}-Q${quarter + 1}`;
+      const weekNumber = getWeekNumber(entry.date);
+      return { ...entry, seasonId, weekNumber };
+    });
+
+    localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(migrated));
+
+    const best = getPersonalBest();
+    if (best.totalGamesPlayed === 0) {
+      best.totalGamesPlayed = getGamesPlayed();
+      const totalBooks = migrated.reduce((sum) => sum + 1, 0);
+      best.totalBooksFound = totalBooks;
+      if (migrated.length > 0) {
+        const top = migrated.sort((a, b) => b.score - a.score)[0];
+        best.highestScore = top.score;
+        best.highestScoreDate = top.date;
+      }
+      localStorage.setItem(PERSONAL_BEST_KEY, JSON.stringify(best));
+    }
+  } catch {}
+}
+
+export function runMigrations(): void {
+  try {
+    const versionStr = localStorage.getItem(STORAGE_VERSION_KEY);
+    const version = versionStr ? parseInt(versionStr, 10) : 1;
+
+    if (version < 2) {
+      migrateFromV1ToV2();
+    }
+
+    localStorage.setItem(STORAGE_VERSION_KEY, String(CURRENT_STORAGE_VERSION));
+  } catch {}
+}

@@ -19,6 +19,10 @@ import {
   saveChapterProgress,
   getCurrentChapterId,
   setCurrentChapterId,
+  updatePersonalBest,
+  runMigrations,
+  isNewPersonalBest,
+  getPersonalBest,
 } from '../utils/storage';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
@@ -61,6 +65,8 @@ export const [showAchievementPopup, setShowAchievementPopup] = createSignal<stri
 export const [lastFindTime, setLastFindTime] = createSignal(0);
 export const [roundStartTime, setRoundStartTime] = createSignal(0);
 export const [foundGenres, setFoundGenres] = createSignal<string[]>([]);
+
+runMigrations();
 export const [gamesPlayed, setGamesPlayed] = createSignal(getGamesPlayed());
 export const [currentTask, setCurrentTask] = createSignal<ChapterTask | null>(null);
 export const [chapterTasks, setChapterTasks] = createSignal<ChapterTask[]>([]);
@@ -182,6 +188,18 @@ const checkAchievements = () => {
     newAchievement = 'master_no_hints';
   }
 
+  const pbFlags = isNewPersonalBest(state.score);
+  if (pbFlags.score && !unlocked.includes('personal_best_score')) {
+    unlocked.push('personal_best_score');
+    newAchievement = 'personal_best_score';
+  }
+
+  const pb = getPersonalBest();
+  if (pb.fastestFind > 0 && pb.fastestFind < 10 && !unlocked.includes('speed_demon')) {
+    unlocked.push('speed_demon');
+    newAchievement = 'speed_demon';
+  }
+
   if (unlocked.length !== state.unlockedAchievements.length) {
     setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
     saveUnlockedAchievements(unlocked);
@@ -208,6 +226,13 @@ const startTimer = () => {
           if (gameState().gameMode === 'chapter') {
             saveChapterProgressState();
           }
+          updatePersonalBest({
+            score: gameState().score,
+            booksFound: gameState().foundBooks.length,
+            findTime: lastFindTime(),
+            hintsUsed: gameState().hintsUsed,
+            consecutiveCorrect: gameState().consecutiveCorrect,
+          });
         }, 0);
         return { ...prev, timeRemaining: 0, state: 'lost' };
       }
@@ -600,6 +625,13 @@ export const selectBook = (bookId: string): boolean => {
         if (timerInterval) clearInterval(timerInterval);
         checkAchievements();
         saveChapterProgressState();
+        updatePersonalBest({
+          score: gameState().score,
+          booksFound: gameState().foundBooks.length,
+          findTime,
+          hintsUsed: state.hintsUsed,
+          consecutiveCorrect: gameState().consecutiveCorrect,
+        });
 
         if (nextTaskIndex >= tasks.length) {
           setTimeout(completeChapter, 500);
@@ -617,6 +649,13 @@ export const selectBook = (bookId: string): boolean => {
 
       if (timerInterval) clearInterval(timerInterval);
       checkAchievements();
+      updatePersonalBest({
+        score: gameState().score,
+        booksFound: gameState().foundBooks.length,
+        findTime,
+        hintsUsed: gameState().hintsUsed,
+        consecutiveCorrect: gameState().consecutiveCorrect,
+      });
     }
     return true;
   } else {

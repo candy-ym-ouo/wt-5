@@ -19,6 +19,7 @@ import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
 import { getNextChapter } from '../data/chapters';
 import { DIFFICULTY_CONFIGS, DIFFICULTY_LEVELS, getDifficultyConfig } from '../data/difficulty';
+import { isNewPersonalBest, getPersonalBestRank, getPersonalBest, getCurrentSeason, getCurrentWeekNumber } from '../utils/storage';
 
 export default function GameModal() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
@@ -34,6 +35,12 @@ export default function GameModal() {
   const tasks = createMemo(() => chapterTasks());
   const isChapterMode = createMemo(() => state().gameMode === 'chapter');
   const currentDiffConfig = createMemo(() => getDifficultyConfig(state().difficultyLevel));
+
+  const personalBestFlags = createMemo(() => isNewPersonalBest(state().score));
+  const personalBestRank = createMemo(() => state().score > 0 ? getPersonalBestRank(state().score) : 0);
+  const personalBestData = createMemo(() => getPersonalBest());
+  const season = createMemo(() => getCurrentSeason());
+  const weekNum = createMemo(() => getCurrentWeekNumber());
 
   const handleSelectDifficulty = (level: DifficultyLevel) => {
     setSelectedDifficulty(level);
@@ -251,7 +258,7 @@ export default function GameModal() {
             <div class="modal-subtitle">
               你找到了《{book()?.title}》！
             </div>
-            
+
             {!isChapterMode() && (
               <div class="result-difficulty">
                 <span class="result-diff-icon">{currentDiffConfig().icon}</span>
@@ -270,8 +277,36 @@ export default function GameModal() {
                 )}
               </div>
             )}
-            
+
             <div class="score-big">+{state().score} 分</div>
+
+            {!isChapterMode() && state().score > 0 && (
+              <div class="settlement-ranking">
+                {(personalBestFlags().score || personalBestFlags().weekly || personalBestFlags().season) && (
+                  <div class="new-record-banner">
+                    {personalBestFlags().score && <span class="record-badge score-record">🏆 新最高分！</span>}
+                    {personalBestFlags().weekly && <span class="record-badge weekly-record">📅 本周最佳！</span>}
+                    {personalBestFlags().season && <span class="record-badge season-record">🏅 赛季最佳！</span>}
+                  </div>
+                )}
+                <div class="ranking-row">
+                  <span class="ranking-label">预估排名</span>
+                  <span class="ranking-value">#{personalBestRank()}</span>
+                </div>
+                <div class="ranking-row">
+                  <span class="ranking-label">历史最高</span>
+                  <span class="ranking-value">{personalBestData().highestScore} 分</span>
+                </div>
+                <div class="ranking-row">
+                  <span class="ranking-label">{season().name} 赛季最佳</span>
+                  <span class="ranking-value">{personalBestData().seasonBestScores[season().id] ?? 0} 分</span>
+                </div>
+                <div class="ranking-row">
+                  <span class="ranking-label">第{weekNum()}周最佳</span>
+                  <span class="ranking-value">{personalBestData().weeklyBestScores[weekNum()] ?? 0} 分</span>
+                </div>
+              </div>
+            )}
             
             <div class="game-stats">
               <div class="game-stat">
@@ -398,6 +433,26 @@ export default function GameModal() {
             )}
             
             <div class="score-big">{state().score} 分</div>
+
+            {!isChapterMode() && state().score > 0 && (
+              <div class="settlement-ranking">
+                {(personalBestFlags().score || personalBestFlags().weekly || personalBestFlags().season) && (
+                  <div class="new-record-banner">
+                    {personalBestFlags().score && <span class="record-badge score-record">🏆 新最高分！</span>}
+                    {personalBestFlags().weekly && <span class="record-badge weekly-record">📅 本周最佳！</span>}
+                    {personalBestFlags().season && <span class="record-badge season-record">🏅 赛季最佳！</span>}
+                  </div>
+                )}
+                <div class="ranking-row">
+                  <span class="ranking-label">预估排名</span>
+                  <span class="ranking-value">#{personalBestRank()}</span>
+                </div>
+                <div class="ranking-row">
+                  <span class="ranking-label">历史最高</span>
+                  <span class="ranking-value">{personalBestData().highestScore} 分</span>
+                </div>
+              </div>
+            )}
             
             <div class="game-stats">
               <div class="game-stat">

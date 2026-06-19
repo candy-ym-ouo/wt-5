@@ -41,7 +41,35 @@ export interface LeaderboardEntry {
   timeUsed: number;
   hintsUsed: number;
   date: number;
+  seasonId?: string;
+  weekNumber?: number;
+  difficulty?: DifficultyLevel;
 }
+
+export interface SeasonInfo {
+  id: string;
+  name: string;
+  startDate: number;
+  endDate: number;
+}
+
+export interface PersonalBest {
+  highestScore: number;
+  highestScoreDate: number;
+  totalGamesPlayed: number;
+  totalBooksFound: number;
+  fastestFind: number;
+  fastestFindDate: number;
+  fewestHintsScore: number;
+  fewestHintsDate: number;
+  fewestHintsCount: number;
+  longestStreak: number;
+  longestStreakDate: number;
+  weeklyBestScores: Record<number, number>;
+  seasonBestScores: Record<string, number>;
+}
+
+export type LeaderboardTab = 'weekly' | 'overall' | 'personal' | 'achievements';
 
 export type GameState = 'idle' | 'playing' | 'paused' | 'won' | 'lost' | 'chapter_complete';
 
