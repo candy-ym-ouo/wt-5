@@ -1,9 +1,15 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, CLUE_TEMPLATES } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { getChapterById, getNextChapter } from '../data/chapters';
+import {
+  getDifficultyConfig,
+  selectRandomTargetByDifficulty,
+  adjustDifficulty,
+  calculateScoreWithDifficulty,
+} from '../data/difficulty';
 import {
   getUnlockedAchievements,
   saveUnlockedAchievements,
@@ -15,14 +21,14 @@ import {
   setCurrentChapterId,
 } from '../utils/storage';
 
-const GAME_TIME = 180;
-const INITIAL_HINTS = 5;
+const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
+const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
 
 const initialStore: GameStore = {
   state: 'idle',
   score: 0,
-  timeRemaining: GAME_TIME,
-  hintsRemaining: INITIAL_HINTS,
+  timeRemaining: getDifficultyConfig(DEFAULT_DIFFICULTY).gameTime,
+  hintsRemaining: getDifficultyConfig(DEFAULT_DIFFICULTY).initialHints,
   hintsUsed: 0,
   currentLevel: 1,
   targetBookId: null,
@@ -36,6 +42,15 @@ const initialStore: GameStore = {
   chapterTimeUsed: 0,
   chapterHintsUsed: 0,
   gameMode: 'classic',
+  difficultyLevel: DEFAULT_DIFFICULTY,
+  difficultyMode: DEFAULT_DIFFICULTY_MODE,
+  difficultyHistory: [DEFAULT_DIFFICULTY],
+  roundStats: {
+    findTimes: [],
+    hintsUsedPerRound: [],
+  },
+  difficultyAdjustmentReason: null,
+  showDifficultyChange: false,
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -51,12 +66,16 @@ export const [chapterTasks, setChapterTasks] = createSignal<ChapterTask[]>([]);
 
 let timerInterval: number | null = null;
 
-const selectRandomTarget = (): Book => {
-  const availableBooks = BOOKS.filter(b => !gameState().foundBooks.includes(b.id));
-  if (availableBooks.length === 0) {
-    return BOOKS[Math.floor(Math.random() * BOOKS.length)];
-  }
-  return availableBooks[Math.floor(Math.random() * availableBooks.length)];
+export const setDifficulty = (level: DifficultyLevel, mode: DifficultyMode = 'dynamic') => {
+  const config = getDifficultyConfig(level);
+  setGameState(prev => ({
+    ...prev,
+    difficultyLevel: level,
+    difficultyMode: mode,
+    difficultyHistory: [level],
+    timeRemaining: config.gameTime,
+    hintsRemaining: config.initialHints,
+  }));
 };
 
 const checkAchievements = () => {
@@ -120,6 +139,48 @@ const checkAchievements = () => {
     newAchievement = 'chapter_starter';
   }
 
+  if (state.difficultyLevel === 'hard' && state.foundBooks.length >= 1 && !unlocked.includes('hard_book')) {
+    unlocked.push('hard_book');
+    newAchievement = 'hard_book';
+  }
+
+  if (state.difficultyLevel === 'expert' && state.foundBooks.length >= 1 && !unlocked.includes('expert_book')) {
+    unlocked.push('expert_book');
+    newAchievement = 'expert_book';
+  }
+
+  if (state.difficultyLevel === 'master' && state.foundBooks.length >= 1 && !unlocked.includes('master_book')) {
+    unlocked.push('master_book');
+    newAchievement = 'master_book';
+  }
+
+  if (state.difficultyHistory.length >= 3 && !unlocked.includes('difficulty_climber')) {
+    const levels = state.difficultyHistory;
+    const levelOrder = ['easy', 'normal', 'hard', 'expert', 'master'];
+    let maxLevel = 0;
+    for (const l of levels) {
+      const idx = levelOrder.indexOf(l);
+      if (idx > maxLevel) maxLevel = idx;
+    }
+    if (maxLevel >= 2) {
+      unlocked.push('difficulty_climber');
+      newAchievement = 'difficulty_climber';
+    }
+  }
+
+  if (state.difficultyMode === 'dynamic' && !unlocked.includes('dynamic_adapter')) {
+    const uniqueLevels = [...new Set(state.difficultyHistory)];
+    if (uniqueLevels.length >= 3) {
+      unlocked.push('dynamic_adapter');
+      newAchievement = 'dynamic_adapter';
+    }
+  }
+
+  if (state.difficultyLevel === 'master' && state.hintsUsed === 0 && state.foundBooks.length >= 1 && !unlocked.includes('master_no_hints')) {
+    unlocked.push('master_no_hints');
+    newAchievement = 'master_no_hints';
+  }
+
   if (unlocked.length !== state.unlockedAchievements.length) {
     setGameState(prev => ({ ...prev, unlockedAchievements: unlocked }));
     saveUnlockedAchievements(unlocked);
@@ -155,18 +216,71 @@ const startTimer = () => {
 };
 
 const setupRound = (book: Book) => {
+  const state = gameState();
+  const config = getDifficultyConfig(state.difficultyLevel);
   const clues = createCluesForBook(book.id);
-  
-  const firstClueContent = CLUE_TEMPLATES.year(book.year);
-  clues[0].content = firstClueContent;
-  
+
+  if (config.clueUnlockOrder) {
+    const orderedClues = config.clueUnlockOrder.map((type, index) => {
+      const clue = clues.find(c => c.type === type);
+      if (clue) {
+        return {
+          ...clue,
+          order: index + 1,
+          unlocked: index === 0,
+          id: `${book.id}-clue-${index + 1}`,
+        };
+      }
+      return null;
+    }).filter(Boolean) as Clue[];
+
+    if (orderedClues.length > 0) {
+      const firstClue = orderedClues[0];
+      let firstClueContent = firstClue.content;
+      switch (firstClue.type) {
+        case 'year':
+          firstClueContent = CLUE_TEMPLATES.year(book.year);
+          break;
+        case 'author':
+          firstClueContent = CLUE_TEMPLATES.author(book.author);
+          break;
+        case 'genre':
+          firstClueContent = CLUE_TEMPLATES.genre(book.genre);
+          break;
+        case 'shelf':
+          firstClueContent = CLUE_TEMPLATES.shelf(book.shelf);
+          break;
+        case 'title':
+          firstClueContent = CLUE_TEMPLATES.title(book.title);
+          break;
+        case 'description':
+          firstClueContent = CLUE_TEMPLATES.description(book.description);
+          break;
+      }
+      orderedClues[0] = { ...firstClue, content: firstClueContent };
+      setCurrentClues(orderedClues);
+    } else {
+      const firstClueContent = CLUE_TEMPLATES.year(book.year);
+      clues[0].content = firstClueContent;
+      setCurrentClues(clues);
+    }
+  } else {
+    const firstClueContent = CLUE_TEMPLATES.year(book.year);
+    clues[0].content = firstClueContent;
+    setCurrentClues(clues);
+  }
+
   setTargetBook(book);
-  setCurrentClues(clues);
   setRoundStartTime(Date.now());
 };
 
-export const startGame = () => {
-  const book = selectRandomTarget();
+export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: DifficultyMode) => {
+  const state = gameState();
+  const diffLevel = difficulty || state.difficultyLevel;
+  const diffMode = difficultyMode || state.difficultyMode;
+  const config = getDifficultyConfig(diffLevel);
+
+  const book = selectRandomTargetByDifficulty(diffLevel, []);
   setupRound(book);
   setFoundGenres([]);
   
@@ -177,8 +291,8 @@ export const startGame = () => {
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: GAME_TIME,
-    hintsRemaining: INITIAL_HINTS,
+    timeRemaining: config.gameTime,
+    hintsRemaining: config.initialHints,
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: book.id,
@@ -191,6 +305,15 @@ export const startGame = () => {
     chapterScore: 0,
     chapterTimeUsed: 0,
     chapterHintsUsed: 0,
+    difficultyLevel: diffLevel,
+    difficultyMode: diffMode,
+    difficultyHistory: [diffLevel],
+    roundStats: {
+      findTimes: [],
+      hintsUsedPerRound: [],
+    },
+    difficultyAdjustmentReason: null,
+    showDifficultyChange: false,
   }));
 
   startTimer();
@@ -225,12 +348,13 @@ export const startChapterGame = (chapterId: string) => {
   const newGamesPlayed = incrementGamesPlayed();
   setGamesPlayed(newGamesPlayed);
 
+  const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
   setGameState(prev => ({
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: GAME_TIME,
-    hintsRemaining: INITIAL_HINTS,
+    timeRemaining: defaultConfig.gameTime,
+    hintsRemaining: defaultConfig.initialHints,
     hintsUsed: 0,
     currentLevel: startTaskIndex + 1,
     targetBookId: book.id,
@@ -246,6 +370,15 @@ export const startChapterGame = (chapterId: string) => {
     chapterScore: progress?.totalScore || 0,
     chapterTimeUsed: progress?.totalTime || 0,
     chapterHintsUsed: progress?.totalHints || 0,
+    difficultyLevel: DEFAULT_DIFFICULTY,
+    difficultyMode: 'fixed',
+    difficultyHistory: [DEFAULT_DIFFICULTY],
+    roundStats: {
+      findTimes: [],
+      hintsUsedPerRound: [],
+    },
+    difficultyAdjustmentReason: null,
+    showDifficultyChange: false,
   }));
 
   startTimer();
@@ -415,17 +548,27 @@ export const selectBook = (bookId: string): boolean => {
   const book = targetBook();
   if (!book) return false;
 
+  const config = getDifficultyConfig(state.difficultyLevel);
+
   if (bookId === book.id) {
     const findTime = (Date.now() - roundStartTime()) / 1000;
     setLastFindTime(findTime);
     
-    const timeBonus = Math.floor(state.timeRemaining / 10);
-    const hintPenalty = state.hintsUsed * 50;
-    const baseScore = 1000;
-    const score = Math.max(baseScore + timeBonus * 10 - hintPenalty, 100);
+    const score = calculateScoreWithDifficulty(
+      config.baseScore,
+      state.timeRemaining,
+      state.hintsUsed,
+      state.difficultyLevel,
+      findTime
+    );
 
     const newFoundGenres = [...foundGenres(), book.genre];
     setFoundGenres(newFoundGenres);
+
+    const newRoundStats = {
+      findTimes: [...state.roundStats.findTimes, findTime],
+      hintsUsedPerRound: [...state.roundStats.hintsUsedPerRound, state.hintsUsed],
+    };
 
     if (state.gameMode === 'chapter') {
       const task = currentTask();
@@ -447,6 +590,7 @@ export const selectBook = (bookId: string): boolean => {
           chapterScore: prev.chapterScore + score,
           chapterTimeUsed: prev.chapterTimeUsed + findTime,
           chapterHintsUsed: prev.chapterHintsUsed + prev.hintsUsed,
+          roundStats: newRoundStats,
           state: nextTaskIndex >= tasks.length ? 'chapter_complete' : 'won',
         }));
 
@@ -464,6 +608,7 @@ export const selectBook = (bookId: string): boolean => {
         score: prev.score + score,
         foundBooks: [...prev.foundBooks, bookId],
         consecutiveCorrect: prev.consecutiveCorrect + 1,
+        roundStats: newRoundStats,
         state: 'won',
       }));
 
@@ -475,7 +620,8 @@ export const selectBook = (bookId: string): boolean => {
     setGameState(prev => ({
       ...prev,
       consecutiveCorrect: 0,
-      timeRemaining: Math.max(prev.timeRemaining - 5, 0),
+      timeRemaining: Math.max(prev.timeRemaining - config.wrongPenaltyTime, 0),
+      score: Math.max(prev.score - config.wrongPenaltyScore, 0),
     }));
     return false;
   }
@@ -496,6 +642,8 @@ export const nextRound = () => {
     const book = BOOKS.find(b => b.id === nextTask.bookId);
     if (!book) return;
 
+    const config = getDifficultyConfig(state.difficultyLevel);
+
     setCurrentTask(nextTask);
     setupRound(book);
 
@@ -506,15 +654,40 @@ export const nextRound = () => {
       currentTaskIndex: nextTaskIndex,
       targetBookId: book.id,
       unlockedClues: [currentClues()[0]?.id || ''],
-      hintsRemaining: Math.min(prev.hintsRemaining + 1, INITIAL_HINTS),
+      hintsRemaining: Math.min(prev.hintsRemaining + 1, config.initialHints),
       hintsUsed: 0,
+      showDifficultyChange: false,
     }));
 
     startTimer();
     saveChapterProgressState();
   } else {
-    const book = selectRandomTarget();
+    let newDifficulty = state.difficultyLevel;
+    let adjustmentReason: string | null = null;
+    let showChange = false;
+
+    if (state.difficultyMode === 'dynamic') {
+      const config = getDifficultyConfig(state.difficultyLevel);
+      const adjustment = adjustDifficulty(
+        state.difficultyLevel,
+        config,
+        {
+          findTimes: state.roundStats.findTimes,
+          hintsUsedPerRound: state.roundStats.hintsUsedPerRound,
+          consecutiveCorrect: state.consecutiveCorrect,
+          currentLevelNum: state.currentLevel,
+        }
+      );
+      newDifficulty = adjustment.newLevel;
+      adjustmentReason = adjustment.reason;
+      showChange = adjustment.changed;
+    }
+
+    const newConfig = getDifficultyConfig(newDifficulty);
+    const book = selectRandomTargetByDifficulty(newDifficulty, state.foundBooks);
     setupRound(book);
+
+    const newHistory = [...state.difficultyHistory, newDifficulty];
 
     setGameState(prev => ({
       ...prev,
@@ -522,8 +695,20 @@ export const nextRound = () => {
       currentLevel: prev.currentLevel + 1,
       targetBookId: book.id,
       unlockedClues: [currentClues()[0]?.id || ''],
-      hintsRemaining: Math.min(prev.hintsRemaining + 1, INITIAL_HINTS),
+      hintsRemaining: Math.min(prev.hintsRemaining + 1, newConfig.initialHints),
+      hintsUsed: 0,
+      difficultyLevel: newDifficulty,
+      difficultyHistory: newHistory,
+      difficultyAdjustmentReason: adjustmentReason,
+      showDifficultyChange: showChange,
+      timeRemaining: newConfig.gameTime,
     }));
+
+    if (showChange) {
+      setTimeout(() => {
+        setGameState(prev => ({ ...prev, showDifficultyChange: false }));
+      }, 3000);
+    }
 
     startTimer();
   }
@@ -559,14 +744,16 @@ export const restartCurrentTask = () => {
   const book = BOOKS.find(b => b.id === task.bookId);
   if (!book) return;
 
+  const config = getDifficultyConfig(state.difficultyLevel);
+
   setupRound(book);
   setFoundGenres([]);
 
   setGameState(prev => ({
     ...prev,
     state: 'playing',
-    timeRemaining: GAME_TIME,
-    hintsRemaining: INITIAL_HINTS,
+    timeRemaining: config.gameTime,
+    hintsRemaining: config.initialHints,
     hintsUsed: 0,
     targetBookId: book.id,
     unlockedClues: [currentClues()[0]?.id || ''],
@@ -575,6 +762,22 @@ export const restartCurrentTask = () => {
 
   startTimer();
   saveChapterProgressState();
+};
+
+export const getDifficultyInfo = () => {
+  const state = gameState();
+  return {
+    level: state.difficultyLevel,
+    mode: state.difficultyMode,
+    config: getDifficultyConfig(state.difficultyLevel),
+    history: state.difficultyHistory,
+    showChange: state.showDifficultyChange,
+    adjustmentReason: state.difficultyAdjustmentReason,
+  };
+};
+
+export const dismissDifficultyChange = () => {
+  setGameState(prev => ({ ...prev, showDifficultyChange: false }));
 };
 
 export const restartChapter = () => {

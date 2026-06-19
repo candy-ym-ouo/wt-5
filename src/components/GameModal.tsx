@@ -1,4 +1,5 @@
 import { createSignal, createMemo } from 'solid-js';
+import type { DifficultyLevel, DifficultyMode } from '../types/game';
 import {
   startGame,
   resetGame,
@@ -12,20 +13,43 @@ import {
   startChapterGame,
   restartCurrentTask,
   restartChapter,
+  setDifficulty,
 } from '../store/gameStore';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
 import { getNextChapter } from '../data/chapters';
+import { DIFFICULTY_CONFIGS, DIFFICULTY_LEVELS, getDifficultyConfig } from '../data/difficulty';
 
 export default function GameModal() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
   const [showChapterSelect, setShowChapterSelect] = createSignal(false);
+  const [showDifficultySelect, setShowDifficultySelect] = createSignal(false);
+  const [selectedDifficulty, setSelectedDifficulty] = createSignal<DifficultyLevel>('normal');
+  const [difficultyMode, setDifficultyMode] = createSignal<DifficultyMode>('dynamic');
+  
   const state = createMemo(() => gameState());
   const book = createMemo(() => targetBook());
   const gameStatus = createMemo(() => state().state);
   const chapter = createMemo(() => getCurrentChapter());
   const tasks = createMemo(() => chapterTasks());
   const isChapterMode = createMemo(() => state().gameMode === 'chapter');
+  const currentDiffConfig = createMemo(() => getDifficultyConfig(state().difficultyLevel));
+
+  const handleSelectDifficulty = (level: DifficultyLevel) => {
+    setSelectedDifficulty(level);
+    setDifficulty(level, difficultyMode());
+  };
+
+  const handleToggleDifficultyMode = () => {
+    const newMode: DifficultyMode = difficultyMode() === 'dynamic' ? 'fixed' : 'dynamic';
+    setDifficultyMode(newMode);
+    setDifficulty(selectedDifficulty(), newMode);
+  };
+
+  const handleStartGameWithDifficulty = () => {
+    startGame(selectedDifficulty(), difficultyMode());
+    setShowDifficultySelect(false);
+  };
 
   const handleContinue = () => {
     if (continueSavedGame()) {
@@ -56,7 +80,7 @@ export default function GameModal() {
 
   return (
     <>
-      {gameStatus() === 'idle' && !showChapterSelect() && (
+      {gameStatus() === 'idle' && !showChapterSelect() && !showDifficultySelect() && (
         <div class="modal-overlay">
           <div class="modal-content">
             <div class="modal-title">📚 旧书店寻物</div>
@@ -83,7 +107,7 @@ export default function GameModal() {
             </div>
 
             <div class="mode-buttons">
-              <button class="modal-button" onClick={startGame}>
+              <button class="modal-button" onClick={() => setShowDifficultySelect(true)}>
                 🎮 经典模式
               </button>
               <button class="modal-button chapter-btn" onClick={() => setShowChapterSelect(true)}>
@@ -107,6 +131,115 @@ export default function GameModal() {
         </div>
       )}
 
+      {gameStatus() === 'idle' && showDifficultySelect() && (
+        <div class="modal-overlay">
+          <div class="modal-content difficulty-select-modal">
+            <div class="modal-title">选择难度</div>
+            <div class="modal-subtitle">
+              选择适合你的挑战难度，或开启动态难度让系统自动调整。
+            </div>
+
+            <div class="difficulty-mode-toggle">
+              <button 
+                class={`mode-toggle-btn ${difficultyMode() === 'fixed' ? 'active' : ''}`}
+                onClick={handleToggleDifficultyMode}
+              >
+                📌 固定难度
+              </button>
+              <button 
+                class={`mode-toggle-btn ${difficultyMode() === 'dynamic' ? 'active' : ''}`}
+                onClick={handleToggleDifficultyMode}
+              >
+                🔄 动态难度
+              </button>
+            </div>
+
+            <div class="difficulty-mode-desc">
+              {difficultyMode() === 'dynamic' 
+                ? '系统会根据你的表现自动调整难度，保持挑战的趣味性'
+                : '保持你选择的难度不变，适合专注练习特定难度'}
+            </div>
+
+            <div class="difficulty-cards">
+              {DIFFICULTY_LEVELS.map((level) => {
+                const config = DIFFICULTY_CONFIGS[level];
+                const isSelected = selectedDifficulty() === level;
+                return (
+                  <div 
+                    class={`difficulty-card ${isSelected ? 'selected' : ''} difficulty-${level}`}
+                    onClick={() => handleSelectDifficulty(level)}
+                  >
+                    <div class="difficulty-card-icon">{config.icon}</div>
+                    <div class="difficulty-card-name">{config.name}</div>
+                    <div class="difficulty-card-desc">{config.description}</div>
+                    <div class="difficulty-card-stats">
+                      <span>⏱️ {config.gameTime}s</span>
+                      <span>💡 {config.initialHints}</span>
+                      <span>⚡ x{config.scoreMultiplier}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div class="difficulty-detail">
+              <div class="difficulty-detail-title">
+                {DIFFICULTY_CONFIGS[selectedDifficulty()].icon} {DIFFICULTY_CONFIGS[selectedDifficulty()].name} 难度详情
+              </div>
+              <div class="difficulty-detail-grid">
+                <div class="detail-item">
+                  <span class="detail-label">游戏时间</span>
+                  <span class="detail-value">{DIFFICULTY_CONFIGS[selectedDifficulty()].gameTime} 秒</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">初始提示</span>
+                  <span class="detail-value">{DIFFICULTY_CONFIGS[selectedDifficulty()].initialHints} 次</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">提示扣分</span>
+                  <span class="detail-value">{DIFFICULTY_CONFIGS[selectedDifficulty()].hintPenalty} 分/次</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">错误扣时</span>
+                  <span class="detail-value">{DIFFICULTY_CONFIGS[selectedDifficulty()].wrongPenaltyTime} 秒</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">错误扣分</span>
+                  <span class="detail-value">{DIFFICULTY_CONFIGS[selectedDifficulty()].wrongPenaltyScore} 分</span>
+                </div>
+                <div class="detail-item">
+                  <span class="detail-label">得分倍率</span>
+                  <span class="detail-value">x{DIFFICULTY_CONFIGS[selectedDifficulty()].scoreMultiplier}</span>
+                </div>
+              </div>
+              {DIFFICULTY_CONFIGS[selectedDifficulty()].targetBookFilter && (
+                <div class="difficulty-filter-info">
+                  <span class="filter-label">📚 目标书籍范围：</span>
+                  {DIFFICULTY_CONFIGS[selectedDifficulty()].targetBookFilter?.genres && (
+                    <span class="filter-value">{DIFFICULTY_CONFIGS[selectedDifficulty()].targetBookFilter!.genres!.join('、')}</span>
+                  )}
+                  {DIFFICULTY_CONFIGS[selectedDifficulty()].targetBookFilter?.yearRange && (
+                    <span class="filter-value">
+                      {DIFFICULTY_CONFIGS[selectedDifficulty()].targetBookFilter!.yearRange![0]} - 
+                      {DIFFICULTY_CONFIGS[selectedDifficulty()].targetBookFilter!.yearRange![1]} 年出版
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div class="difficulty-actions">
+              <button class="modal-button secondary" onClick={() => setShowDifficultySelect(false)}>
+                ← 返回
+              </button>
+              <button class="modal-button" onClick={handleStartGameWithDifficulty}>
+                🎮 开始游戏
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showChapterSelect() && gameStatus() === 'idle' && (
         <ChapterSelect onBack={() => setShowChapterSelect(false)} />
       )}
@@ -118,6 +251,15 @@ export default function GameModal() {
             <div class="modal-subtitle">
               你找到了《{book()?.title}》！
             </div>
+            
+            {!isChapterMode() && (
+              <div class="result-difficulty">
+                <span class="result-diff-icon">{currentDiffConfig().icon}</span>
+                <span class="result-diff-name">{currentDiffConfig().name}</span>
+                <span class="result-diff-multiplier">x{currentDiffConfig().scoreMultiplier}倍率</span>
+                {state().difficultyMode === 'dynamic' && <span class="result-diff-mode">🔄 动态</span>}
+              </div>
+            )}
             
             <div class="score-big">+{state().score} 分</div>
             
@@ -236,6 +378,15 @@ export default function GameModal() {
               你要找的书是《{book()?.title}》。
             </div>
             
+            {!isChapterMode() && (
+              <div class="result-difficulty">
+                <span class="result-diff-icon">{currentDiffConfig().icon}</span>
+                <span class="result-diff-name">{currentDiffConfig().name}</span>
+                <span class="result-diff-multiplier">x{currentDiffConfig().scoreMultiplier}倍率</span>
+                {state().difficultyMode === 'dynamic' && <span class="result-diff-mode">🔄 动态</span>}
+              </div>
+            )}
+            
             <div class="score-big">{state().score} 分</div>
             
             <div class="game-stats">
@@ -269,7 +420,7 @@ export default function GameModal() {
                 </button>
               </>
             ) : (
-              <button class="modal-button" onClick={startGame}>
+              <button class="modal-button" onClick={() => startGame()}>
                 再来一局
               </button>
             )}

@@ -22,6 +22,8 @@ export interface Clue {
   order: number;
 }
 
+export type ClueType = 'author' | 'year' | 'genre' | 'title' | 'shelf' | 'description';
+
 export interface Achievement {
   id: string;
   title: string;
@@ -44,6 +46,44 @@ export interface LeaderboardEntry {
 export type GameState = 'idle' | 'playing' | 'paused' | 'won' | 'lost' | 'chapter_complete';
 
 export type ChapterStatus = 'locked' | 'in_progress' | 'completed';
+
+export type DifficultyLevel = 'easy' | 'normal' | 'hard' | 'expert' | 'master';
+
+export interface DifficultyConfig {
+  id: DifficultyLevel;
+  name: string;
+  description: string;
+  icon: string;
+  initialHints: number;
+  hintPenalty: number;
+  wrongPenaltyTime: number;
+  wrongPenaltyScore: number;
+  gameTime: number;
+  baseScore: number;
+  scoreMultiplier: number;
+  targetBookFilter?: {
+    genres?: string[];
+    yearRange?: [number, number];
+    shelves?: number[];
+  };
+  clueUnlockOrder?: ClueType[];
+  dynamicAdjustment: {
+    enabled: boolean;
+    consecutiveCorrectThreshold: number;
+    avgTimeThreshold: number;
+    hintUsageThreshold: number;
+  };
+}
+
+export interface DifficultyAdjustmentResult {
+  newLevel: DifficultyLevel;
+  reason: string;
+  changed: boolean;
+}
+
+export type GameMode = 'classic' | 'chapter';
+
+export type DifficultyMode = 'fixed' | 'dynamic';
 
 export interface ChapterTask {
   id: string;
@@ -100,5 +140,14 @@ export interface GameStore {
   chapterScore: number;
   chapterTimeUsed: number;
   chapterHintsUsed: number;
-  gameMode: 'classic' | 'chapter';
+  gameMode: GameMode;
+  difficultyLevel: DifficultyLevel;
+  difficultyMode: DifficultyMode;
+  difficultyHistory: DifficultyLevel[];
+  roundStats: {
+    findTimes: number[];
+    hintsUsedPerRound: number[];
+  };
+  difficultyAdjustmentReason: string | null;
+  showDifficultyChange: boolean;
 }

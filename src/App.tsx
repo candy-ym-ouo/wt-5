@@ -7,17 +7,22 @@ import Timer from './components/Timer';
 import GameModal from './components/GameModal';
 import Leaderboard from './components/Leaderboard';
 import ChapterProgress from './components/ChapterProgress';
-import { gameState, showAchievementPopup, getCurrentChapter, chapterTasks } from './store/gameStore';
+import { gameState, showAchievementPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange } from './store/gameStore';
+import { getDifficultyConfig } from './data/difficulty';
 
 export default function App() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
   const state = createMemo(() => gameState());
+  const diffInfo = createMemo(() => getDifficultyInfo());
   const isPlaying = createMemo(() => state().state === 'playing');
   const currentScore = createMemo(() => state().score);
   const currentLevel = createMemo(() => state().currentLevel);
   const isChapterMode = createMemo(() => state().gameMode === 'chapter');
   const currentChapter = createMemo(() => getCurrentChapter());
   const tasks = createMemo(() => chapterTasks());
+  const diffConfig = createMemo(() => getDifficultyConfig(state().difficultyLevel));
+  const showDiffChange = createMemo(() => state().showDifficultyChange && state().state === 'playing');
+  const isDynamicMode = createMemo(() => state().difficultyMode === 'dynamic');
 
   return (
     <div class="game-container">
@@ -27,6 +32,12 @@ export default function App() {
           {isChapterMode() && currentChapter() && (
             <span class="chapter-badge">
               {currentChapter()?.icon} {currentChapter()?.title}
+            </span>
+          )}
+          {!isChapterMode() && isPlaying() && (
+            <span class="difficulty-header-badge">
+              {diffConfig().icon} {diffConfig().name}
+              {isDynamicMode() && <span class="dynamic-indicator">🔄</span>}
             </span>
           )}
         </div>
@@ -44,6 +55,12 @@ export default function App() {
                 : currentLevel()}
             </div>
           </div>
+          {!isChapterMode() && isPlaying() && (
+            <div class="stat-item difficulty-stat">
+              <div class="stat-label">⚡ 倍率</div>
+              <div class="stat-value">x{diffConfig().scoreMultiplier}</div>
+            </div>
+          )}
           <button 
             class="stat-item rank-button"
             onClick={() => setShowLeaderboard(true)}
@@ -95,6 +112,25 @@ export default function App() {
         <div class="achievement-popup">
           <div class="achievement-popup-title">🏆 成就解锁</div>
           <div class="achievement-popup-name">{showAchievementPopup()}</div>
+        </div>
+      )}
+
+      {showDiffChange() && (
+        <div class="difficulty-change-popup" onClick={dismissDifficultyChange}>
+          <div class="difficulty-change-icon">
+            {diffConfig().icon}
+          </div>
+          <div class="difficulty-change-title">
+            难度调整：{diffConfig().name}
+          </div>
+          <div class="difficulty-change-reason">
+            {diffInfo().adjustmentReason}
+          </div>
+          <div class="difficulty-change-stats">
+            <span>⏱️ {diffConfig().gameTime}秒</span>
+            <span>💡 {diffConfig().initialHints}次提示</span>
+            <span>⚡ x{diffConfig().scoreMultiplier}倍率</span>
+          </div>
         </div>
       )}
 
