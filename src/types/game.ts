@@ -1,3 +1,5 @@
+export type RarityLevel = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+
 export interface Book {
   id: string;
   title: string;
@@ -11,6 +13,38 @@ export interface Book {
   height: number;
   description: string;
   isTarget?: boolean;
+  rarity: RarityLevel;
+  themes: string[];
+}
+
+export interface ThemeChallenge {
+  id: string;
+  theme: string;
+  icon: string;
+  title: string;
+  description: string;
+  bookIds: string[];
+  bonusScore: number;
+  requiredBooks: number;
+  unlocked: boolean;
+}
+
+export interface ThemeProgress {
+  themeId: string;
+  completedBookIds: string[];
+  totalScore: number;
+  completedAt?: number;
+}
+
+export interface ThemeReward {
+  id: string;
+  themeId: string;
+  title: string;
+  description: string;
+  icon: string;
+  bonusType: 'score' | 'hints' | 'powerup';
+  value: number;
+  unlocked: boolean;
 }
 
 export interface Clue {
@@ -212,4 +246,7 @@ export interface GameStore {
   showDifficultyChange: boolean;
   lastTimeBonus: number;
   powerUps: PowerUpState;
+  currentThemeId: string | null;
+  themeFoundBooks: string[];
+  themeScore: number;
 }

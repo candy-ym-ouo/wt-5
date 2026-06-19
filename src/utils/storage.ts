@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest } from '../types/game';
+import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress } from '../types/game';
 
 export const LEADERBOARD_KEY = 'old_bookstore_leaderboard';
 export const ACHIEVEMENTS_KEY = 'old_bookstore_achievements';
@@ -8,8 +8,11 @@ export const CURRENT_CHAPTER_KEY = 'old_bookstore_current_chapter';
 export const SEASON_KEY = 'old_bookstore_season';
 export const PERSONAL_BEST_KEY = 'old_bookstore_personal_best';
 export const STORAGE_VERSION_KEY = 'old_bookstore_storage_version';
+export const THEME_PROGRESS_KEY = 'old_bookstore_theme_progress';
+export const THEME_REWARDS_KEY = 'old_bookstore_theme_rewards';
+export const CURRENT_THEME_KEY = 'old_bookstore_current_theme';
 
-const CURRENT_STORAGE_VERSION = 2;
+const CURRENT_STORAGE_VERSION = 3;
 
 function getWeekNumber(date: number): number {
   const d = new Date(date);
@@ -360,3 +363,63 @@ export function runMigrations(): void {
     localStorage.setItem(STORAGE_VERSION_KEY, String(CURRENT_STORAGE_VERSION));
   } catch {}
 }
+
+export const getAllThemeProgress = (): Record<string, ThemeProgress> => {
+  try {
+    const data = localStorage.getItem(THEME_PROGRESS_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+};
+
+export const getThemeProgress = (themeId: string): ThemeProgress | null => {
+  const allProgress = getAllThemeProgress();
+  return allProgress[themeId] || null;
+};
+
+export const saveThemeProgress = (progress: ThemeProgress): void => {
+  const allProgress = getAllThemeProgress();
+  allProgress[progress.themeId] = progress;
+  localStorage.setItem(THEME_PROGRESS_KEY, JSON.stringify(allProgress));
+};
+
+export const getCurrentThemeId = (): string | null => {
+  try {
+    return localStorage.getItem(CURRENT_THEME_KEY);
+  } catch {
+    return null;
+  }
+};
+
+export const setCurrentThemeId = (themeId: string | null): void => {
+  if (themeId) {
+    localStorage.setItem(CURRENT_THEME_KEY, themeId);
+  } else {
+    localStorage.removeItem(CURRENT_THEME_KEY);
+  }
+};
+
+export const getUnlockedThemeRewardIds = (): string[] => {
+  try {
+    const data = localStorage.getItem(THEME_REWARDS_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const saveUnlockedThemeRewardIds = (ids: string[]): void => {
+  localStorage.setItem(THEME_REWARDS_KEY, JSON.stringify(ids));
+};
+
+export const getCompletedThemesCount = (): number => {
+  const allProgress = getAllThemeProgress();
+  return Object.values(allProgress).filter(p => p.completedAt).length;
+};
+
+export const clearThemeProgress = (): void => {
+  localStorage.removeItem(THEME_PROGRESS_KEY);
+  localStorage.removeItem(CURRENT_THEME_KEY);
+  localStorage.removeItem(THEME_REWARDS_KEY);
+};

@@ -14,16 +14,23 @@ import {
   restartCurrentTask,
   restartChapter,
   setDifficulty,
+  nextThemeRound,
+  getCurrentThemeInfo,
+  hasThemeProgress,
+  continueThemeGame,
 } from '../store/gameStore';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
+import ThemeSelect from './ThemeSelect';
 import { getNextChapter } from '../data/chapters';
 import { DIFFICULTY_CONFIGS, DIFFICULTY_LEVELS, getDifficultyConfig } from '../data/difficulty';
+import { RARITY_CONFIG } from '../data/themes';
 import { isNewPersonalBest, getPersonalBestRank, getPersonalBest, getCurrentSeason, getCurrentWeekNumber } from '../utils/storage';
 
 export default function GameModal() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
   const [showChapterSelect, setShowChapterSelect] = createSignal(false);
+  const [showThemeSelect, setShowThemeSelect] = createSignal(false);
   const [showDifficultySelect, setShowDifficultySelect] = createSignal(false);
   const [selectedDifficulty, setSelectedDifficulty] = createSignal<DifficultyLevel>('normal');
   const [difficultyMode, setDifficultyMode] = createSignal<DifficultyMode>('dynamic');
@@ -34,7 +41,9 @@ export default function GameModal() {
   const chapter = createMemo(() => getCurrentChapter());
   const tasks = createMemo(() => chapterTasks());
   const isChapterMode = createMemo(() => state().gameMode === 'chapter');
+  const isThemeMode = createMemo(() => state().currentThemeId !== null);
   const currentDiffConfig = createMemo(() => getDifficultyConfig(state().difficultyLevel));
+  const themeInfo = createMemo(() => getCurrentThemeInfo());
 
   const personalBestFlags = createMemo(() => isNewPersonalBest(state().score));
   const personalBestRank = createMemo(() => state().score > 0 ? getPersonalBestRank(state().score) : 0);
@@ -61,6 +70,13 @@ export default function GameModal() {
   const handleContinue = () => {
     if (continueSavedGame()) {
       setShowChapterSelect(false);
+    }
+  };
+
+  const handleContinueTheme = () => {
+    const currentThemeId = state().currentThemeId;
+    if (currentThemeId && continueThemeGame(currentThemeId)) {
+      setShowThemeSelect(false);
     }
   };
 
@@ -120,11 +136,20 @@ export default function GameModal() {
               <button class="modal-button chapter-btn" onClick={() => setShowChapterSelect(true)}>
                 📖 章节任务
               </button>
+              <button class="modal-button theme-btn" onClick={() => setShowThemeSelect(true)}>
+                🎯 主题挑战
+              </button>
             </div>
 
             {hasSavedProgress() && (
               <button class="modal-button continue-btn" onClick={handleContinue}>
-                ⏯️ 继续上次进度
+                ⏯️ 继续章节进度
+              </button>
+            )}
+            
+            {state().currentThemeId && hasThemeProgress(state().currentThemeId!) && (
+              <button class="modal-button continue-btn" onClick={handleContinueTheme}>
+                ⏯️ 继续主题挑战
               </button>
             )}
             
@@ -251,6 +276,10 @@ export default function GameModal() {
         <ChapterSelect onBack={() => setShowChapterSelect(false)} />
       )}
 
+      {showThemeSelect() && gameStatus() === 'idle' && (
+        <ThemeSelect onBack={() => setShowThemeSelect(false)} />
+      )}
+
       {gameStatus() === 'won' && (
         <div class="modal-overlay">
           <div class="modal-content">
@@ -340,8 +369,45 @@ export default function GameModal() {
               </div>
             )}
 
-            <button class="modal-button" onClick={nextRound}>
-              {isChapterMode() ? '下一个任务' : '下一本书'}
+            {isThemeMode() && themeInfo() && (
+              <div class="theme-progress-summary">
+                <div class="theme-progress-label">
+                  {themeInfo()?.theme.icon} {themeInfo()?.theme.title} - 挑战进度
+                </div>
+                <div class="theme-progress-bar">
+                  <div 
+                    class="theme-progress-fill"
+                    style={{ width: `${themeInfo()?.percent}%` }}
+                  />
+                </div>
+                <div class="theme-progress-text">
+                  {themeInfo()?.progress} / {themeInfo()?.required} 本书籍完成
+                  {themeInfo()?.isComplete && <span class="theme-complete-badge">✓ 挑战完成！</span>}
+                </div>
+                {themeInfo()?.isComplete && (
+                  <div class="theme-bonus-badge">
+                    ⭐ 通关奖励 +{themeInfo()?.theme.bonusScore} 分
+                  </div>
+                )}
+              </div>
+            )}
+
+            {book() && (
+              <div class="book-rarity-info">
+                <span class="rarity-icon" style={{ color: RARITY_CONFIG[book()!.rarity].color }}>
+                  {RARITY_CONFIG[book()!.rarity].icon}
+                </span>
+                <span class="rarity-name" style={{ color: RARITY_CONFIG[book()!.rarity].color }}>
+                  {RARITY_CONFIG[book()!.rarity].name}
+                </span>
+                <span class="rarity-multiplier">
+                  x{RARITY_CONFIG[book()!.rarity].scoreMultiplier} 得分倍率
+                </span>
+              </div>
+            )}
+
+            <button class="modal-button" onClick={isThemeMode() ? nextThemeRound : nextRound}>
+              {isChapterMode() ? '下一个任务' : isThemeMode() ? '下一本书籍' : '下一本书'}
             </button>
             <button class="modal-button secondary" onClick={() => setShowLeaderboard(true)}>
               排行榜

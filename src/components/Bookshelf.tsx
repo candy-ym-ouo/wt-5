@@ -1,7 +1,7 @@
 import { onMount, onCleanup, createSignal, createEffect } from 'solid-js';
 import * as PIXI from 'pixi.js';
 import { BOOKS, SHELF_COUNT } from '../data/books';
-import { selectBook, gameState } from '../store/gameStore';
+import { selectBookWithRarity, gameState } from '../store/gameStore';
 import type { Book } from '../types/game';
 
 export default function Bookshelf() {
@@ -226,7 +226,7 @@ export default function Bookshelf() {
     const eliminatedIds = gameState().powerUps.eliminatedBookIds;
     if (eliminatedIds.includes(book.id)) return;
 
-    const isCorrect = selectBook(book.id);
+    const isCorrect = selectBookWithRarity(book.id);
 
     if (isCorrect) {
       sprite.tint = 0x00ff00;
