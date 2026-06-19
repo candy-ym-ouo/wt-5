@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, CLUE_TEMPLATES } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -132,6 +132,25 @@ const initialStore: GameStore = {
     },
     layoutAffected: false,
   },
+  rush: {
+    active: false,
+    totalStages: 3,
+    currentStageIndex: 0,
+    stages: [],
+    stageRewards: {
+      stage1Bonus: 200,
+      stage2Bonus: 350,
+      stage3Bonus: 500,
+      completionBonus: 1000,
+      perfectBonus: 800,
+    },
+    totalStageBonus: 0,
+    totalTimeBonus: 0,
+    noHintStages: 0,
+    noWrongStages: 0,
+    completed: false,
+    perfectRun: false,
+  },
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -161,6 +180,9 @@ export const [dailyChallenge, setDailyChallenge] = createSignal<DailyChallenge |
 export const [dailyChallengeScore, setDailyChallengeScore] = createSignal(0);
 export const [dailyChallengeBooksFound, setDailyChallengeBooksFound] = createSignal(0);
 export const [showDailyCompletePopup, setShowDailyCompletePopup] = createSignal(false);
+export const [lastRushStageBonus, setLastRushStageBonus] = createSignal(0);
+export const [lastRushTimeBonus, setLastRushTimeBonus] = createSignal(0);
+export const [showRushCompletePopup, setShowRushCompletePopup] = createSignal(false);
 
 let timerInterval: number | null = null;
 
@@ -1894,6 +1916,11 @@ export const dismissStreakPopup = () => {
 export const nextRound = () => {
   const state = gameState();
   
+  if (state.gameMode === 'rush') {
+    nextRushStage();
+    return;
+  }
+  
   if (state.gameMode === 'daily') {
     nextDailyRound();
     return;
@@ -2111,6 +2138,7 @@ export const resetGame = () => {
   setShowAchievementPopup(null);
   setShowThemeRewardPopup(null);
   setShowDailyCompletePopup(false);
+  setShowRushCompletePopup(false);
   setGameState(prev => ({ ...prev, showDifficultyChange: false }));
   setGameState(initialStore);
   setCurrentClues([]);
@@ -2124,6 +2152,8 @@ export const resetGame = () => {
   setDailyChallenge(null);
   setDailyChallengeScore(0);
   setDailyChallengeBooksFound(0);
+  setLastRushStageBonus(0);
+  setLastRushTimeBonus(0);
 };
 
 export const restartCurrentTask = () => {
@@ -2579,6 +2609,43 @@ export const selectBookWithRarity = (bookId: string): boolean => {
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
+    } else if (state.gameMode === 'rush') {
+      completeRushStage(bookId, findTime);
+
+      setGameState(prev => ({
+          ...prev,
+          score: prev.score + totalScore,
+          foundBooks: [...prev.foundBooks, bookId],
+          consecutiveCorrect: prev.consecutiveCorrect + 1,
+          roundStats: newRoundStats,
+          roundDetails: [...prev.roundDetails, roundDetail],
+          currentRoundWrongPicks: [],
+          state: 'won',
+          streak: {
+            ...prev.streak,
+            currentStreak: newStreakCount,
+            bestStreak,
+            bestStreakDate,
+            totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+            currentTitleId: newTitleId,
+            streakStartTime: prev.streak.streakStartTime || Date.now(),
+          },
+          lastStreakBonus: streakResult.streakBonus,
+        }));
+
+      if (timerInterval) clearInterval(timerInterval);
+      updatePersonalBest({
+        score: gameState().score,
+        booksFound: gameState().foundBooks.length,
+        findTime,
+        hintsUsed: gameState().hintsUsed,
+        consecutiveCorrect: gameState().consecutiveCorrect,
+      });
+      checkAchievements();
+      checkStreakAchievements(newStreakCount);
+
+      const themesForBook = getThemesForBook(bookId);
+      themesForBook.forEach(t => checkThemeRewards(t.id));
     } else {
       setGameState(prev => ({
           ...prev,
@@ -2861,4 +2928,335 @@ export const getDailyLeaderboardEntries = () => {
 export const isDailyChallengeMode = (): boolean => {
   const state = gameState();
   return state.gameMode === 'daily';
+};
+
+const generateRushBooks = (difficulty: DifficultyLevel): Book[] => {
+  const books: Book[] = [];
+  const usedIds: string[] = [];
+  
+  for (let i = 0; i < 3; i++) {
+    const book = selectRandomTargetByDifficulty(difficulty, usedIds);
+    books.push(book);
+    usedIds.push(book.id);
+  }
+  
+  return books;
+};
+
+const calculateRushStageBonus = (
+  stageIndex: number,
+  findTime: number,
+  hintsUsed: number,
+  wrongPicks: number
+): { stageBonus: number; timeBonus: number; noHint: boolean; noWrong: boolean } => {
+  const rewards = initialStore.rush.stageRewards;
+  let stageBonus = 0;
+  let timeBonus = 0;
+  let noHint = false;
+  let noWrong = false;
+
+  switch (stageIndex) {
+    case 0:
+      stageBonus = rewards.stage1Bonus;
+      break;
+    case 1:
+      stageBonus = rewards.stage2Bonus;
+      break;
+    case 2:
+      stageBonus = rewards.stage3Bonus;
+      break;
+  }
+
+  if (hintsUsed === 0) {
+    noHint = true;
+    stageBonus = Math.floor(stageBonus * 1.3);
+  }
+
+  if (wrongPicks === 0) {
+    noWrong = true;
+    stageBonus = Math.floor(stageBonus * 1.2);
+  }
+
+  if (findTime < 20) {
+    stageBonus = Math.floor(stageBonus * 1.25);
+    timeBonus += 15;
+  } else if (findTime < 40) {
+    stageBonus = Math.floor(stageBonus * 1.1);
+    timeBonus += 8;
+  } else if (findTime < 60) {
+    timeBonus += 5;
+  } else {
+    timeBonus += 3;
+  }
+
+  return { stageBonus, timeBonus, noHint, noWrong };
+};
+
+export const startRushGame = (difficulty?: DifficultyLevel, difficultyMode?: DifficultyMode) => {
+  const state = gameState();
+  const diffLevel = difficulty || state.difficultyLevel;
+  const diffMode = difficultyMode || state.difficultyMode;
+  const config = getDifficultyConfig(diffLevel);
+
+  const books = generateRushBooks(diffLevel);
+  const firstBook = books[0];
+  setupRound(firstBook);
+  setFoundGenres([]);
+  setGameStartTime(Date.now());
+
+  const newGamesPlayed = incrementGamesPlayed();
+  setGamesPlayed(newGamesPlayed);
+
+  const stages: RushStage[] = books.map((book, index) => ({
+    id: `rush-stage-${Date.now()}-${index}`,
+    stageNumber: index + 1,
+    bookId: book.id,
+    bookTitle: book.title,
+    status: index === 0 ? 'current' : 'pending',
+  }));
+
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    score: 0,
+    timeRemaining: config.gameTime,
+    hintsRemaining: config.initialHints,
+    hintsUsed: 0,
+    currentLevel: 1,
+    targetBookId: firstBook.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    foundBooks: [],
+    consecutiveCorrect: 0,
+    gameMode: 'rush',
+    currentChapterId: null,
+    currentTaskIndex: 0,
+    chapterScore: 0,
+    chapterTimeUsed: 0,
+    chapterHintsUsed: 0,
+    difficultyLevel: diffLevel,
+    difficultyMode: diffMode,
+    difficultyHistory: [diffLevel],
+    roundStats: {
+      findTimes: [],
+      hintsUsedPerRound: [],
+    },
+    roundDetails: [],
+    currentRoundWrongPicks: [],
+    difficultyAdjustmentReason: null,
+    showDifficultyChange: false,
+    lastTimeBonus: 0,
+    powerUps: createInitialPowerUpState(diffLevel),
+    currentThemeId: null,
+    themeFoundBooks: [],
+    themeScore: 0,
+    rush: {
+      active: true,
+      totalStages: 3,
+      currentStageIndex: 0,
+      stages,
+      stageRewards: initialStore.rush.stageRewards,
+      totalStageBonus: 0,
+      totalTimeBonus: 0,
+      noHintStages: 0,
+      noWrongStages: 0,
+      completed: false,
+      perfectRun: false,
+    },
+  }));
+
+  startTimer();
+};
+
+const completeRushStage = (_bookId: string, findTime: number) => {
+  const state = gameState();
+  if (state.gameMode !== 'rush') return;
+
+  const stageIndex = state.rush.currentStageIndex;
+  const wrongPicks = state.currentRoundWrongPicks.length;
+  const hintsUsed = state.hintsUsed;
+
+  const { stageBonus, timeBonus, noHint, noWrong } = calculateRushStageBonus(
+    stageIndex,
+    findTime,
+    hintsUsed,
+    wrongPicks
+  );
+
+  setLastRushStageBonus(stageBonus);
+  setLastRushTimeBonus(timeBonus);
+
+  const newStages = state.rush.stages.map((stage, index) => {
+    if (index === stageIndex) {
+      return {
+        ...stage,
+        status: 'completed' as const,
+        scoreEarned: state.score,
+        timeUsed: findTime,
+        hintsUsed,
+        wrongPicks,
+        stageBonus,
+        timeBonus,
+      };
+    }
+    if (index === stageIndex + 1) {
+      return {
+        ...stage,
+        status: 'current' as const,
+      };
+    }
+    return stage;
+  });
+
+  setGameState(prev => ({
+    ...prev,
+    score: prev.score + stageBonus,
+    rush: {
+      ...prev.rush,
+      stages: newStages,
+      totalStageBonus: prev.rush.totalStageBonus + stageBonus,
+      totalTimeBonus: prev.rush.totalTimeBonus + timeBonus,
+      noHintStages: prev.rush.noHintStages + (noHint ? 1 : 0),
+      noWrongStages: prev.rush.noWrongStages + (noWrong ? 1 : 0),
+    },
+  }));
+};
+
+export const nextRushStage = () => {
+  const state = gameState();
+  if (state.gameMode !== 'rush') return;
+
+  const nextStageIndex = state.rush.currentStageIndex + 1;
+
+  if (nextStageIndex >= state.rush.totalStages) {
+    completeRushGame();
+    return;
+  }
+
+  const nextStage = state.rush.stages[nextStageIndex];
+  const nextBook = BOOKS.find(b => b.id === nextStage.bookId);
+  if (!nextBook) return;
+
+  const config = getDifficultyConfig(state.difficultyLevel);
+  setupRound(nextBook);
+
+  if (peekInterval) {
+    clearInterval(peekInterval);
+    peekInterval = null;
+  }
+
+  const lastBonus = state.rush.stages[state.rush.currentStageIndex];
+  const timeBonusFromLast = lastBonus?.timeBonus || 0;
+
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    currentLevel: nextStageIndex + 1,
+    targetBookId: nextBook.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    hintsRemaining: Math.min(prev.hintsRemaining + 1, config.initialHints + 2),
+    hintsUsed: 0,
+    showDifficultyChange: false,
+    timeRemaining: prev.timeRemaining + timeBonusFromLast,
+    currentRoundWrongPicks: [],
+    rush: {
+      ...prev.rush,
+      currentStageIndex: nextStageIndex,
+    },
+    powerUps: {
+      ...prev.powerUps,
+      peekActive: false,
+      peekEndTime: 0,
+      eliminatedBookIds: [],
+      powerUpsUsedThisRound: {
+        freeHints: 0,
+        timePeeks: 0,
+        eliminateWrongs: 0,
+      },
+    },
+  }));
+
+  startTimer();
+};
+
+const completeRushGame = () => {
+  const state = gameState();
+  if (state.gameMode !== 'rush') return;
+
+  const rewards = state.rush.stageRewards;
+  let finalScore = state.score + rewards.completionBonus;
+  let perfectRun = false;
+
+  if (state.rush.noHintStages === 3 && state.rush.noWrongStages === 3) {
+    perfectRun = true;
+    finalScore += rewards.perfectBonus;
+  }
+
+  setGameState(prev => ({
+    ...prev,
+    score: finalScore,
+    state: 'won',
+    rush: {
+      ...prev.rush,
+      completed: true,
+      perfectRun,
+      totalStageBonus: prev.rush.totalStageBonus + rewards.completionBonus + (perfectRun ? rewards.perfectBonus : 0),
+    },
+  }));
+
+  setShowRushCompletePopup(true);
+
+  if (timerInterval) clearInterval(timerInterval);
+  updatePersonalBest({
+    score: finalScore,
+    booksFound: gameState().foundBooks.length,
+    findTime: lastFindTime(),
+    hintsUsed: gameState().hintsUsed,
+    consecutiveCorrect: gameState().consecutiveCorrect,
+  });
+  checkAchievements();
+  checkStreakAchievements(gameState().streak.currentStreak + 1);
+};
+
+export const getRushInfo = () => {
+  const state = gameState();
+  if (state.gameMode !== 'rush') return null;
+
+  const progress = state.rush.currentStageIndex;
+  const total = state.rush.totalStages;
+  const percent = (progress / total) * 100;
+
+  return {
+    rush: state.rush,
+    stages: state.rush.stages,
+    currentStage: state.rush.stages[state.rush.currentStageIndex],
+    progress,
+    total,
+    percent,
+    currentStageIndex: state.rush.currentStageIndex,
+    totalStageBonus: state.rush.totalStageBonus,
+    totalTimeBonus: state.rush.totalTimeBonus,
+    noHintStages: state.rush.noHintStages,
+    noWrongStages: state.rush.noWrongStages,
+    completed: state.rush.completed,
+    perfectRun: state.rush.perfectRun,
+    stageRewards: state.rush.stageRewards,
+  };
+};
+
+export const isRushMode = (): boolean => {
+  const state = gameState();
+  return state.gameMode === 'rush';
+};
+
+export const restartRushGame = () => {
+  const state = gameState();
+  if (state.gameMode !== 'rush') return;
+
+  const diffLevel = state.difficultyLevel;
+  const diffMode = state.difficultyMode;
+  resetGame();
+
+  setTimeout(() => {
+    startRushGame(diffLevel, diffMode);
+  }, 50);
 };

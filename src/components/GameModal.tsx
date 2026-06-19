@@ -27,6 +27,12 @@ import {
   startDailyChallenge,
   getDailyChallengeInfo,
   isDailyChallengeMode,
+  startRushGame,
+  getRushInfo,
+  isRushMode,
+  restartRushGame,
+  lastRushStageBonus,
+  lastRushTimeBonus,
 } from '../store/gameStore';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
@@ -79,6 +85,10 @@ export default function GameModal() {
   const hasDailyCompleted = createMemo(() => hasCompletedDailyChallenge());
   const isDailyMode = createMemo(() => isDailyChallengeMode());
   const dailyInfo = createMemo(() => getDailyChallengeInfo());
+  const isRushGameMode = createMemo(() => isRushMode());
+  const rushInfo = createMemo(() => getRushInfo());
+  const lastStageBonus = createMemo(() => lastRushStageBonus());
+  const lastStageTimeBonus = createMemo(() => lastRushTimeBonus());
 
   const handleSelectDifficulty = (level: DifficultyLevel) => {
     setSelectedDifficulty(level);
@@ -106,6 +116,11 @@ export default function GameModal() {
     startGame(selectedDifficulty(), difficultyMode());
     setShowDifficultySelect(false);
     setShowStreakInherit(false);
+  };
+
+  const handleStartRushGame = () => {
+    startRushGame(selectedDifficulty(), difficultyMode());
+    setShowDifficultySelect(false);
   };
 
   const handleContinue = () => {
@@ -187,6 +202,9 @@ export default function GameModal() {
               <button class="modal-button daily-btn" onClick={handleStartDailyChallenge}>
                 📆 每日挑战
                 {hasDailyCompleted() && <span class="daily-badge">✓</span>}
+              </button>
+              <button class="modal-button rush-btn" onClick={handleStartRushGame}>
+                ⚡ 闯关模式
               </button>
             </div>
 
@@ -346,13 +364,16 @@ export default function GameModal() {
               </button>
               {hasStreak() ? (
                 <button class="modal-button streak-inherit-button" onClick={() => setShowStreakInherit(true)}>
-                  🎮 开始游戏
+                  🎮 开始经典模式
                 </button>
               ) : (
                 <button class="modal-button" onClick={handleStartGameWithDifficulty}>
-                  🎮 开始游戏
+                  🎮 开始经典模式
                 </button>
               )}
+              <button class="modal-button rush-start-button" onClick={handleStartRushGame}>
+                ⚡ 开始闯关模式
+              </button>
             </div>
           </div>
         </div>
@@ -601,6 +622,56 @@ export default function GameModal() {
               </div>
             )}
 
+            {isRushGameMode() && rushInfo() && (
+              <div class="rush-progress-summary">
+                <div class="rush-progress-label">
+                  ⚡ 闯关模式 - 第 {rushInfo()!.currentStageIndex + 1} 阶段完成
+                </div>
+                <div class="rush-stage-rewards">
+                  <div class="rush-reward-item">
+                    <span class="rush-reward-icon">🎯</span>
+                    <span class="rush-reward-label">阶段奖励</span>
+                    <span class="rush-reward-value positive">+{lastStageBonus()} 分</span>
+                  </div>
+                  <div class="rush-reward-item">
+                    <span class="rush-reward-icon">⏱️</span>
+                    <span class="rush-reward-label">时间奖励</span>
+                    <span class="rush-reward-value positive">+{lastStageTimeBonus()} 秒</span>
+                  </div>
+                </div>
+                <div class="rush-stages-mini">
+                  {rushInfo()!.stages.map((stage, index) => (
+                    <div class={`rush-stage-mini-item rush-${stage.status}`}>
+                      <span class="rush-stage-mini-num">{index + 1}</span>
+                      <span class="rush-stage-mini-status">
+                        {stage.status === 'completed' ? '✓' : stage.status === 'current' ? '●' : '○'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div class="rush-progress-bar">
+                  <div 
+                    class="rush-progress-fill"
+                    style={{ width: `${rushInfo()!.percent}%` }}
+                  />
+                </div>
+                <div class="rush-progress-text">
+                  {rushInfo()!.currentStageIndex + 1} / {rushInfo()!.total} 阶段完成
+                  累计阶段奖励: +{rushInfo()!.totalStageBonus} 分
+                </div>
+                {rushInfo()!.completed && rushInfo()!.perfectRun && (
+                  <div class="rush-perfect-run">
+                    ⭐⭐⭐ 完美通关！额外 +{rushInfo()!.stageRewards.perfectBonus} 分
+                  </div>
+                )}
+                {rushInfo()!.completed && (
+                  <div class="rush-completion-bonus">
+                    🏆 通关奖励 +{rushInfo()!.stageRewards.completionBonus} 分
+                  </div>
+                )}
+              </div>
+            )}
+
             {book() && (
               <div class="book-rarity-info">
                 <span class="rarity-icon" style={{ color: RARITY_CONFIG[book()!.rarity].color }}>
@@ -616,7 +687,7 @@ export default function GameModal() {
             )}
 
             <button class="modal-button" onClick={isThemeMode() ? nextThemeRound : nextRound}>
-              {isChapterMode() ? '下一个任务' : isThemeMode() ? '下一本书籍' : isDailyMode() ? '下一本挑战书' : '下一本书'}
+              {isChapterMode() ? '下一个任务' : isThemeMode() ? '下一本书籍' : isDailyMode() ? '下一本挑战书' : isRushGameMode() && rushInfo()?.completed ? '🎉 挑战完成！' : isRushGameMode() ? '进入下一阶段 →' : '下一本书'}
             </button>
             <button class="modal-button secondary" onClick={() => setShowLeaderboard(true)}>
               排行榜
@@ -830,6 +901,28 @@ export default function GameModal() {
               </div>
             )}
 
+            {isRushGameMode() && rushInfo() && (
+              <div class="rush-progress-summary">
+                <div class="rush-progress-label">
+                  ⚡ 闯关模式 - 挑战中断
+                </div>
+                <div class="rush-stages-mini">
+                  {rushInfo()?.stages.map((stage, index) => (
+                    <div class={`rush-stage-mini-item rush-${stage.status}`}>
+                      <span class="rush-stage-mini-num">{index + 1}</span>
+                      <span class="rush-stage-mini-status">
+                        {stage.status === 'completed' ? '✓' : stage.status === 'current' ? '✗' : '○'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div class="rush-progress-text">
+                  完成: {rushInfo()?.currentStageIndex} / {rushInfo()?.total} 阶段
+                  累计得分: {state().score} 分
+                </div>
+              </div>
+            )}
+
             {isChapterMode() ? (
               <>
                 <button class="modal-button" onClick={restartCurrentTask}>
@@ -843,6 +936,12 @@ export default function GameModal() {
               <>
                 <button class="modal-button" onClick={handleStartDailyChallenge}>
                   🔄 再挑战一次
+                </button>
+              </>
+            ) : isRushGameMode() ? (
+              <>
+                <button class="modal-button rush-restart-button" onClick={restartRushGame}>
+                  ⚡ 重新闯关
                 </button>
               </>
             ) : (

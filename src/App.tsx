@@ -8,7 +8,7 @@ import GameModal from './components/GameModal';
 import Leaderboard from './components/Leaderboard';
 import ChapterProgress from './components/ChapterProgress';
 import StreakDisplay from './components/StreakDisplay';
-import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode } from './store/gameStore';
+import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode } from './store/gameStore';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
 
@@ -33,6 +33,8 @@ export default function App() {
   const hasActiveStreak = createMemo(() => streakInfo().currentStreak > 0 && isPlaying());
   const dailyInfo = createMemo(() => getDailyChallengeInfo());
   const isDailyMode = createMemo(() => isDailyChallengeMode());
+  const rushInfo = createMemo(() => getRushInfo());
+  const isRushGameMode = createMemo(() => isRushMode());
 
   return (
     <div class="game-container">
@@ -54,6 +56,11 @@ export default function App() {
               📆 每日挑战
             </span>
           )}
+          {isRushGameMode() && (
+            <span class="rush-header-badge">
+              ⚡ 闯关模式 {rushInfo()!.currentStageIndex + 1}/{rushInfo()!.total}
+            </span>
+          )}
           {!isChapterMode() && !isThemeMode() && isPlaying() && (
             <span class="difficulty-header-badge">
               {diffConfig().icon} {diffConfig().name}
@@ -68,12 +75,14 @@ export default function App() {
             <div class="stat-value">{currentScore()}</div>
           </div>
           <div class="stat-item">
-            <div class="stat-label">{isChapterMode() ? '📖 任务' : isThemeMode() ? '🎯 目标' : '📖 关卡'}</div>
+            <div class="stat-label">{isChapterMode() ? '📖 任务' : isThemeMode() ? '🎯 目标' : isRushGameMode() ? '⚡ 阶段' : '📖 关卡'}</div>
             <div class="stat-value">
               {isChapterMode() && tasks().length > 0
                 ? `${currentLevel()}/${tasks().length}`
                 : isThemeMode() && currentTheme()
                 ? `${currentTheme()?.progress}/${currentTheme()?.required}`
+                : isRushGameMode() && rushInfo()
+                ? `${rushInfo()!.currentStageIndex + 1}/${rushInfo()!.total}`
                 : currentLevel()}
             </div>
           </div>
@@ -201,6 +210,63 @@ export default function App() {
                       {RARITY_CONFIG[currentBook()!.rarity].icon} {RARITY_CONFIG[currentBook()!.rarity].name}
                       (x{RARITY_CONFIG[currentBook()!.rarity].scoreMultiplier})
                     </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isRushGameMode() && rushInfo() && (
+            <div class="sidebar-section rush-section">
+              <div class="section-title">
+                <span>⚡</span>
+                <span>闯关模式进度</span>
+              </div>
+              <div class="rush-progress-card">
+                <div class="rush-card-title">三关挑战</div>
+                <div class="rush-stages-list">
+                  {rushInfo()?.stages.map((stage, index) => (
+                    <div class={`rush-stage-item rush-${stage.status}`}>
+                      <span class="rush-stage-num">{index + 1}</span>
+                      <span class="rush-stage-status">
+                        {stage.status === 'completed' ? '✅' : stage.status === 'current' ? '🎯' : '⏳'}
+                      </span>
+                      <span class="rush-stage-info">
+                        {stage.status === 'completed' ? (
+                          <>
+                            <span class="rush-stage-score">+{stage.stageBonus}</span>
+                            <span class="rush-stage-time">⏱️{stage.timeBonus}s</span>
+                          </>
+                        ) : stage.status === 'current' ? (
+                          <span class="rush-stage-current">进行中</span>
+                        ) : (
+                          <span class="rush-stage-pending">待挑战</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div class="rush-progress-bar">
+                  <div 
+                    class="rush-progress-fill"
+                    style={{ width: `${rushInfo()?.percent}%` }}
+                  />
+                </div>
+                <div class="rush-progress-info">
+                  <span class="rush-progress-text">
+                    阶段奖励: +{rushInfo()?.totalStageBonus}
+                  </span>
+                  <span class="rush-progress-time">
+                    时间奖励: +{rushInfo()?.totalTimeBonus}s
+                  </span>
+                </div>
+                <div class="rush-stats-row">
+                  <span class="rush-stat">💡 无提示: {rushInfo()?.noHintStages}/3</span>
+                  <span class="rush-stat">🎯 无失误: {rushInfo()?.noWrongStages}/3</span>
+                </div>
+                {rushInfo()?.perfectRun && (
+                  <div class="rush-perfect-badge">
+                    ⭐ 完美通关！
                   </div>
                 )}
               </div>

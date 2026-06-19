@@ -201,7 +201,43 @@ export interface DifficultyAdjustmentResult {
   changed: boolean;
 }
 
-export type GameMode = 'classic' | 'chapter' | 'daily';
+export type GameMode = 'classic' | 'chapter' | 'daily' | 'rush';
+
+export type RushStageStatus = 'pending' | 'current' | 'completed' | 'failed';
+
+export interface RushStage {
+  id: string;
+  stageNumber: number;
+  bookId: string;
+  bookTitle: string;
+  status: RushStageStatus;
+  scoreEarned?: number;
+  timeUsed?: number;
+  hintsUsed?: number;
+  wrongPicks?: number;
+  stageBonus?: number;
+  timeBonus?: number;
+}
+
+export interface RushState {
+  active: boolean;
+  totalStages: number;
+  currentStageIndex: number;
+  stages: RushStage[];
+  stageRewards: {
+    stage1Bonus: number;
+    stage2Bonus: number;
+    stage3Bonus: number;
+    completionBonus: number;
+    perfectBonus: number;
+  };
+  totalStageBonus: number;
+  totalTimeBonus: number;
+  noHintStages: number;
+  noWrongStages: number;
+  completed: boolean;
+  perfectRun: boolean;
+}
 
 export type DifficultyMode = 'fixed' | 'dynamic';
 
@@ -437,6 +473,7 @@ export interface GameStore {
     penalty: WrongPenaltyEvent | null;
   }[];
   themeFilter: ThemeFilterState;
+  rush: RushState;
 }
 
 export interface DailyChallengeBook {
