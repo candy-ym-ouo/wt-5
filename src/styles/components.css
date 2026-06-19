@@ -1,0 +1,119 @@
+.rank-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+}
+
+.small-stat-value {
+  font-size: 0.9rem;
+}
+
+.current-task-card {
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid #ffd700;
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+.task-title {
+  color: #ffd700;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+}
+
+.task-desc {
+  color: #f5e6d3;
+  font-size: 0.8rem;
+}
+
+.task-idle {
+  color: #a08060;
+  font-size: 0.85rem;
+}
+
+.achievement-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.achievement-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #a08060;
+}
+
+.achievements-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.achievement-icon-item {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: help;
+}
+
+.achievement-icon-item.locked {
+  opacity: 0.3;
+  filter: grayscale(100%);
+}
+
+.modal-subtitle-text {
+  font-size: 1rem;
+  color: #a08060;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.score-big {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+  margin: 20px 0;
+}
+
+.section-sm {
+  margin-top: 16px;
+}
+
+.text-gold {
+  color: #d4a574;
+  margin-bottom: 8px;
+}
+
+.leaderboard-empty {
+  color: #a08060;
+  padding: 20px;
+  text-align: center;
+}
+
+.hint-small {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.book-popup-title {
+  font-weight: bold;
+  color: #8B4513;
+  margin-bottom: 4px;
+}
+
+.book-popup-meta {
+  color: #666;
+  font-size: 0.75rem;
+}
+
+.clue-cards-scroll {
+  max-height: 300px;
+  overflow-y: auto;
+}

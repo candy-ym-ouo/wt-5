@@ -1,0 +1,20 @@
+{
+  "name": "old-bookstore-hunt",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "solid-js": "^1.8.15",
+    "pixi.js": "^6.5.10"
+  },
+  "devDependencies": {
+    "typescript": "^4.9.5",
+    "vite": "^4.5.0",
+    "vite-plugin-solid": "^2.8.0"
+  }
+}

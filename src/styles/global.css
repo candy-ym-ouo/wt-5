@@ -1,0 +1,614 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Georgia', 'SimSun', serif;
+  background: #2c1810;
+  color: #f5e6d3;
+}
+
+body {
+  background: linear-gradient(135deg, #2c1810 0%, #3d2317 50%, #1a0f0a 100%);
+}
+
+.game-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.game-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: linear-gradient(180deg, #4a2c1a 0%, #3d2317 100%);
+  border-bottom: 3px solid #8B4513;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.game-title {
+  font-size: 1.4rem;
+  color: #d4a574;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  letter-spacing: 2px;
+}
+
+.header-stats {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: #a08060;
+  margin-bottom: 2px;
+}
+
+.stat-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #f5e6d3;
+}
+
+.stat-value.time-warning {
+  color: #ff6b6b;
+  animation: pulse 1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.game-main {
+  flex: 1;
+  display: flex;
+  position: relative;
+  overflow: hidden;
+}
+
+.bookshelf-section {
+  flex: 1;
+  position: relative;
+  background: linear-gradient(180deg, #1a0f0a 0%, #2c1810 100%);
+}
+
+.bookshelf-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.sidebar {
+  width: 320px;
+  background: linear-gradient(180deg, #3d2317 0%, #2c1810 100%);
+  border-left: 3px solid #8B4513;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-section {
+  padding: 16px;
+  border-bottom: 1px solid #5c3a21;
+}
+
+.sidebar-section:last-child {
+  border-bottom: none;
+}
+
+.section-title {
+  font-size: 1rem;
+  color: #d4a574;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #5c3a21;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clue-card {
+  background: linear-gradient(135deg, #f5e6d3 0%, #e8d5c4 100%);
+  color: #3d2317;
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.clue-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 24px,
+    rgba(139, 69, 19, 0.05) 24px,
+    rgba(139, 69, 19, 0.05) 25px
+  );
+  pointer-events: none;
+}
+
+.clue-card.locked {
+  filter: blur(3px);
+  opacity: 0.6;
+  background: linear-gradient(135deg, #5c3a21 0%, #4a2c1a 100%);
+  color: #8B7355;
+}
+
+.clue-title {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: #8B4513;
+  margin-bottom: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+.clue-content {
+  font-size: 0.8rem;
+  line-height: 1.6;
+  position: relative;
+  z-index: 1;
+}
+
+.hint-button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(135deg, #8B4513 0%, #a0522d 100%);
+  color: #f5e6d3;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+  font-family: inherit;
+}
+
+.hint-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.4);
+  background: linear-gradient(135deg, #a0522d 0%, #cd853f 100%);
+}
+
+.hint-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hint-count {
+  font-size: 0.8rem;
+  color: #d4a574;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+
+.modal-content {
+  background: linear-gradient(135deg, #3d2317 0%, #2c1810 100%);
+  border: 3px solid #8B4513;
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 500px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+.modal-title {
+  font-size: 1.8rem;
+  color: #d4a574;
+  margin-bottom: 16px;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.modal-subtitle {
+  font-size: 1rem;
+  color: #a08060;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.modal-button {
+  padding: 14px 30px;
+  background: linear-gradient(135deg, #8B4513 0%, #a0522d 100%);
+  color: #f5e6d3;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin: 8px;
+  font-family: inherit;
+}
+
+.modal-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.modal-button.secondary {
+  background: linear-gradient(135deg, #5c3a21 0%, #4a2c1a 100%);
+}
+
+.score-display {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+  margin: 20px 0;
+}
+
+.achievement-popup {
+  position: fixed;
+  top: 80px;
+  right: 20px;
+  background: linear-gradient(135deg, #ffd700 0%, #daa520 100%);
+  color: #3d2317;
+  padding: 16px 24px;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  z-index: 2000;
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.achievement-popup-title {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.achievement-popup-name {
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.leaderboard-list {
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 16px 0;
+}
+
+.leaderboard-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #5c3a21;
+}
+
+.leaderboard-item:last-child {
+  border-bottom: none;
+}
+
+.leaderboard-rank {
+  width: 30px;
+  font-size: 1rem;
+  font-weight: bold;
+  color: #d4a574;
+}
+
+.leaderboard-rank.gold { color: #ffd700; }
+.leaderboard-rank.silver { color: #c0c0c0; }
+.leaderboard-rank.bronze { color: #cd7f32; }
+
+.leaderboard-name {
+  flex: 1;
+  font-size: 0.9rem;
+  text-align: left;
+  margin-left: 10px;
+}
+
+.leaderboard-score {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #ffd700;
+}
+
+.achievements-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.achievement-item {
+  padding: 12px;
+  background: rgba(92, 58, 33, 0.5);
+  border-radius: 8px;
+  text-align: center;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.achievement-item.unlocked {
+  background: rgba(255, 215, 0, 0.1);
+  border-color: #ffd700;
+}
+
+.achievement-icon {
+  font-size: 1.8rem;
+  margin-bottom: 6px;
+}
+
+.achievement-item.locked .achievement-icon {
+  filter: grayscale(100%);
+  opacity: 0.5;
+}
+
+.achievement-name {
+  font-size: 0.8rem;
+  color: #d4a574;
+  margin-bottom: 4px;
+}
+
+.achievement-item.locked .achievement-name {
+  color: #666;
+}
+
+.achievement-desc {
+  font-size: 0.7rem;
+  color: #a08060;
+  line-height: 1.4;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 10px;
+  background: #4a2c1a;
+  color: #a08060;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.tab-button.active {
+  background: #5c3a21;
+  color: #d4a574;
+}
+
+.input-field {
+  width: 100%;
+  padding: 12px;
+  background: #2c1810;
+  border: 2px solid #5c3a21;
+  border-radius: 6px;
+  color: #f5e6d3;
+  font-size: 1rem;
+  font-family: inherit;
+  margin: 8px 0;
+}
+
+.input-field:focus {
+  outline: none;
+  border-color: #8B4513;
+}
+
+.game-stats {
+  display: flex;
+  justify-content: space-around;
+  margin: 20px 0;
+}
+
+.game-stat {
+  text-align: center;
+}
+
+.game-stat-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #d4a574;
+}
+
+.game-stat-label {
+  font-size: 0.8rem;
+  color: #a08060;
+  margin-top: 4px;
+}
+
+.book-info-popup {
+  position: absolute;
+  background: rgba(245, 230, 211, 0.95);
+  color: #3d2317;
+  padding: 12px;
+  border-radius: 6px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  z-index: 100;
+  max-width: 200px;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 260px;
+  }
+  
+  .game-title {
+    font-size: 1rem;
+  }
+  
+  .stat-value {
+    font-size: 0.9rem;
+  }
+  
+  .header-stats {
+    gap: 10px;
+  }
+}
+
+.rank-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-family: inherit;
+  padding: 0;
+}
+
+.small-stat-value {
+  font-size: 0.9rem;
+}
+
+.current-task-card {
+  background: rgba(255, 215, 0, 0.1);
+  border: 1px solid #ffd700;
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+.task-title {
+  color: #ffd700;
+  font-size: 0.85rem;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+.task-desc {
+  color: #f5e6d3;
+  font-size: 0.8rem;
+}
+
+.task-idle {
+  color: #a08060;
+  font-size: 0.85rem;
+}
+
+.achievement-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.achievement-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #a08060;
+}
+
+.achievements-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.achievement-icon-item {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: help;
+}
+
+.achievement-icon-item.locked {
+  opacity: 0.3;
+  filter: grayscale(100%);
+}
+
+.score-big {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.5);
+  margin: 20px 0;
+}
+
+.section-sm {
+  margin-top: 16px;
+}
+
+.text-gold {
+  color: #d4a574;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+
+.leaderboard-empty {
+  color: #a08060;
+  padding: 20px;
+  text-align: center;
+}
+
+.hint-small {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.book-popup-title {
+  font-weight: bold;
+  color: #8B4513;
+  margin-bottom: 4px;
+}
+
+.book-popup-meta {
+  color: #666;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.modal-title-sm {
+  font-size: 1.4rem;
+}

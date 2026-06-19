@@ -1,0 +1,86 @@
+import { createSignal } from 'solid-js';
+import Bookshelf from './components/Bookshelf';
+import ClueCards from './components/ClueCards';
+import HintSystem from './components/HintSystem';
+import AchievementList from './components/AchievementList';
+import Timer from './components/Timer';
+import GameModal from './components/GameModal';
+import Leaderboard from './components/Leaderboard';
+import { gameState, showAchievementPopup } from './store/gameStore';
+
+export default function App() {
+  const [showLeaderboard, setShowLeaderboard] = createSignal(false);
+  const state = gameState();
+
+  return (
+    <div class="game-container">
+      <header class="game-header">
+        <div class="game-title">📚 旧书店寻物</div>
+        <div class="header-stats">
+          <Timer />
+          <div class="stat-item">
+            <div class="stat-label">🎯 得分</div>
+            <div class="stat-value">{state.score}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">📖 关卡</div>
+            <div class="stat-value">{state.currentLevel}</div>
+          </div>
+          <button 
+            class="stat-item rank-button"
+            onClick={() => setShowLeaderboard(true)}
+            title="查看排行榜和成就"
+          >
+            <div class="stat-label">🏆 排行</div>
+            <div class="stat-value small-stat-value">查看</div>
+          </button>
+        </div>
+      </header>
+
+      <main class="game-main">
+        <Bookshelf />
+        
+        <aside class="sidebar">
+          <div class="sidebar-section">
+            <div class="section-title">
+              <span>🔍</span>
+              <span>当前任务</span>
+            </div>
+            <div class="current-task-card">
+              {state.state === 'playing' ? (
+                <>
+                  <div class="task-title">找到神秘藏书</div>
+                  <div class="task-desc">根据右侧线索，在书架上找到目标书籍</div>
+                </>
+              ) : (
+                <div class="task-idle">开始游戏接受挑战</div>
+              )}
+            </div>
+          </div>
+
+          {state.state === 'playing' && (
+            <>
+              <ClueCards />
+              <HintSystem />
+            </>
+          )}
+
+          <AchievementList />
+        </aside>
+      </main>
+
+      <GameModal />
+
+      {showAchievementPopup() && (
+        <div class="achievement-popup">
+          <div class="achievement-popup-title">🏆 成就解锁</div>
+          <div class="achievement-popup-name">{showAchievementPopup()}</div>
+        </div>
+      )}
+
+      {showLeaderboard() && (
+        <Leaderboard onClose={() => setShowLeaderboard(false)} />
+      )}
+    </div>
+  );
+}
