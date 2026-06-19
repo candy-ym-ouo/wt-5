@@ -7,7 +7,8 @@ import Timer from './components/Timer';
 import GameModal from './components/GameModal';
 import Leaderboard from './components/Leaderboard';
 import ChapterProgress from './components/ChapterProgress';
-import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook } from './store/gameStore';
+import StreakDisplay from './components/StreakDisplay';
+import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo } from './store/gameStore';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
 
@@ -20,6 +21,7 @@ export default function App() {
   const currentLevel = createMemo(() => state().currentLevel);
   const isChapterMode = createMemo(() => state().gameMode === 'chapter');
   const isThemeMode = createMemo(() => state().currentThemeId !== null);
+  const isClassicMode = createMemo(() => !isChapterMode() && !isThemeMode());
   const currentChapter = createMemo(() => getCurrentChapter());
   const currentTheme = createMemo(() => getCurrentThemeInfo());
   const currentBook = createMemo(() => targetBook());
@@ -27,6 +29,8 @@ export default function App() {
   const diffConfig = createMemo(() => getDifficultyConfig(state().difficultyLevel));
   const showDiffChange = createMemo(() => state().showDifficultyChange && state().state === 'playing');
   const isDynamicMode = createMemo(() => state().difficultyMode === 'dynamic');
+  const streakInfo = createMemo(() => getStreakInfo());
+  const hasActiveStreak = createMemo(() => streakInfo().currentStreak > 0 && isPlaying());
 
   return (
     <div class="game-container">
@@ -72,6 +76,9 @@ export default function App() {
               <div class="stat-value">x{diffConfig().scoreMultiplier}</div>
             </div>
           )}
+          {hasActiveStreak() && isClassicMode() && (
+            <StreakDisplay compact />
+          )}
           {currentBook() && isPlaying() && (
             <div class="stat-item rarity-stat">
               <div class="stat-label">📚 稀有度</div>
@@ -96,6 +103,16 @@ export default function App() {
         
         <aside class="sidebar">
           <ChapterProgress />
+
+          {isClassicMode() && hasActiveStreak() && (
+            <div class="sidebar-section streak-sidebar-section">
+              <div class="section-title">
+                <span>🔥</span>
+                <span>连胜状态</span>
+              </div>
+              <StreakDisplay />
+            </div>
+          )}
 
           {isThemeMode() && currentTheme() && (
             <div class="sidebar-section theme-section">

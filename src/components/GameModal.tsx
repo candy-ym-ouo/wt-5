@@ -18,6 +18,9 @@ import {
   getCurrentThemeInfo,
   hasThemeProgress,
   continueThemeGame,
+  hasSavedStreak,
+  getSavedStreakInfo,
+  startGameWithStreak,
 } from '../store/gameStore';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
@@ -26,6 +29,7 @@ import { getNextChapter } from '../data/chapters';
 import { DIFFICULTY_CONFIGS, DIFFICULTY_LEVELS, getDifficultyConfig } from '../data/difficulty';
 import { RARITY_CONFIG } from '../data/themes';
 import { isNewPersonalBest, getPersonalBestRank, getPersonalBest, getCurrentSeason, getCurrentWeekNumber } from '../utils/storage';
+import { getStreakTitle, STREAK_INHERIT_COST } from '../data/streaks';
 
 export default function GameModal() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
@@ -34,6 +38,7 @@ export default function GameModal() {
   const [showDifficultySelect, setShowDifficultySelect] = createSignal(false);
   const [selectedDifficulty, setSelectedDifficulty] = createSignal<DifficultyLevel>('normal');
   const [difficultyMode, setDifficultyMode] = createSignal<DifficultyMode>('dynamic');
+  const [showStreakInherit, setShowStreakInherit] = createSignal(false);
   
   const state = createMemo(() => gameState());
   const book = createMemo(() => targetBook());
@@ -44,6 +49,13 @@ export default function GameModal() {
   const isThemeMode = createMemo(() => state().currentThemeId !== null);
   const currentDiffConfig = createMemo(() => getDifficultyConfig(state().difficultyLevel));
   const themeInfo = createMemo(() => getCurrentThemeInfo());
+  
+  const savedStreak = createMemo(() => getSavedStreakInfo());
+  const hasStreak = createMemo(() => hasSavedStreak());
+  const savedStreakTitle = createMemo(() => {
+    const streak = savedStreak();
+    return streak ? getStreakTitle(streak.currentStreak) : null;
+  });
 
   const personalBestFlags = createMemo(() => isNewPersonalBest(state().score));
   const personalBestRank = createMemo(() => state().score > 0 ? getPersonalBestRank(state().score) : 0);
@@ -65,6 +77,18 @@ export default function GameModal() {
   const handleStartGameWithDifficulty = () => {
     startGame(selectedDifficulty(), difficultyMode());
     setShowDifficultySelect(false);
+  };
+
+  const handleStartGameWithStreak = () => {
+    startGameWithStreak(true);
+    setShowDifficultySelect(false);
+    setShowStreakInherit(false);
+  };
+
+  const handleStartGameWithoutStreak = () => {
+    startGame(selectedDifficulty(), difficultyMode());
+    setShowDifficultySelect(false);
+    setShowStreakInherit(false);
   };
 
   const handleContinue = () => {
@@ -260,12 +284,99 @@ export default function GameModal() {
               )}
             </div>
 
+            {hasStreak() && (
+              <div class="streak-section">
+                <div class="section-title-sm">
+                  <span>🔥</span>
+                  <span>连胜记录</span>
+                </div>
+                <div class="streak-card-summary">
+                  <div class="streak-summary-main">
+                    <span class="streak-summary-icon">{savedStreakTitle()?.icon}</span>
+                    <span class="streak-summary-title" style={{ color: savedStreakTitle()?.color }}>
+                      {savedStreakTitle()?.title}
+                    </span>
+                    <span class="streak-summary-count" style={{ color: savedStreakTitle()?.color }}>
+                      {savedStreak()?.currentStreak} 连胜
+                    </span>
+                  </div>
+                  <div class="streak-summary-score">
+                    上局得分：{savedStreak()?.lastScore} 分
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div class="difficulty-actions">
               <button class="modal-button secondary" onClick={() => setShowDifficultySelect(false)}>
                 ← 返回
               </button>
-              <button class="modal-button" onClick={handleStartGameWithDifficulty}>
-                🎮 开始游戏
+              {hasStreak() ? (
+                <button class="modal-button streak-inherit-button" onClick={() => setShowStreakInherit(true)}>
+                  🎮 开始游戏
+                </button>
+              ) : (
+                <button class="modal-button" onClick={handleStartGameWithDifficulty}>
+                  🎮 开始游戏
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showStreakInherit() && (
+        <div class="modal-overlay">
+          <div class="modal-content streak-inherit-modal">
+            <div class="modal-title">🔥 连胜继承</div>
+            <div class="modal-subtitle">
+              检测到你有保存的连胜记录，可以选择继承连胜继续挑战！
+            </div>
+
+            <div class="streak-inherit-card">
+              <div class="streak-inherit-header">
+                <span class="streak-inherit-icon">{savedStreakTitle()?.icon}</span>
+                <span class="streak-inherit-title" style={{ color: savedStreakTitle()?.color }}>
+                  {savedStreakTitle()?.title}
+                </span>
+              </div>
+              <div class="streak-inherit-stats">
+                <div class="streak-inherit-stat">
+                  <div class="stat-value-big">{savedStreak()?.currentStreak}</div>
+                  <div class="stat-label-sm">当前连胜</div>
+                </div>
+                <div class="streak-inherit-stat">
+                  <div class="stat-value-big">{savedStreak()?.bestStreak}</div>
+                  <div class="stat-label-sm">最高连胜</div>
+                </div>
+                <div class="streak-inherit-stat">
+                  <div class="stat-value-big">{savedStreak()?.lastScore}</div>
+                  <div class="stat-label-sm">上局得分</div>
+                </div>
+              </div>
+
+              <div class="inherit-warning">
+                <div class="inherit-warning-title">⚠️ 继承代价</div>
+                <div class="inherit-warning-content">
+                  <span class="inherit-penalty">
+                    初始分数 -{STREAK_INHERIT_COST.scorePenaltyPercent}%
+                  </span>
+                  <span class="inherit-penalty">
+                    初始时间 -{STREAK_INHERIT_COST.timePenaltyPercent}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div class="streak-inherit-actions">
+              <button class="modal-button secondary" onClick={() => setShowStreakInherit(false)}>
+                ← 返回
+              </button>
+              <button class="modal-button secondary" onClick={handleStartGameWithoutStreak}>
+                🆕 全新开始
+              </button>
+              <button class="modal-button streak-inherit-button" onClick={handleStartGameWithStreak}>
+                🔥 继承连胜
               </button>
             </div>
           </div>
@@ -535,6 +646,19 @@ export default function GameModal() {
               </div>
             </div>
 
+            {!isChapterMode() && state().streak.bestStreak > 0 && (
+              <div class="streak-summary-lost">
+                <div class="streak-save-badge">
+                  🔥 连胜已保存：{state().streak.bestStreak} 连胜
+                </div>
+                {state().streak.currentStreak === 0 && state().streak.bestStreak > 0 && (
+                  <div class="streak-save-hint">
+                    下局可选择继承连胜继续挑战！
+                  </div>
+                )}
+              </div>
+            )}
+
             {isChapterMode() && (
               <div class="chapter-save-hint">
                 💾 进度已保存，可随时继续挑战
@@ -551,9 +675,17 @@ export default function GameModal() {
                 </button>
               </>
             ) : (
-              <button class="modal-button" onClick={() => startGame()}>
-                再来一局
-              </button>
+              <>
+                {hasStreak() ? (
+                  <button class="modal-button streak-inherit-button" onClick={() => setShowStreakInherit(true)}>
+                    🔥 继承连胜再战
+                  </button>
+                ) : (
+                  <button class="modal-button" onClick={() => startGame()}>
+                    再来一局
+                  </button>
+                )}
+              </>
             )}
             <button class="modal-button secondary" onClick={() => setShowLeaderboard(true)}>
               排行榜

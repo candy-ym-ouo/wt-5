@@ -1168,6 +1168,18 @@ const handleStreakOnFail = () => {
     ? Date.now() 
     : state.streak.bestStreakDate;
 
+  if (state.gameMode === 'classic') {
+    saveStreak({
+      currentStreak: state.streak.currentStreak,
+      bestStreak,
+      bestStreakDate,
+      currentTitleId: state.streak.currentTitleId || 'streak_newbie',
+      lastScore: state.score,
+      lastDifficulty: state.difficultyLevel,
+      savedAt: Date.now(),
+    });
+  }
+
   setGameState(prev => ({
     ...prev,
     streak: {
