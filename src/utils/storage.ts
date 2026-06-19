@@ -681,7 +681,23 @@ export function saveDailyLeaderboardEntry(entry: DailyChallengeScore): DailyChal
     const allEntries: Record<string, DailyChallengeScore[]> = data ? JSON.parse(data) : {};
     
     const dateEntries = allEntries[entry.date] || [];
-    dateEntries.push(entry);
+    
+    if (entry.playerName) {
+      const existingIndex = dateEntries.findIndex(e => e.playerName === entry.playerName);
+      if (existingIndex >= 0) {
+        const existingEntry = dateEntries[existingIndex];
+        if (entry.score > existingEntry.score) {
+          dateEntries[existingIndex] = entry;
+        } else {
+          return dateEntries.sort((a, b) => b.score - a.score).slice(0, 50);
+        }
+      } else {
+        dateEntries.push(entry);
+      }
+    } else {
+      dateEntries.push(entry);
+    }
+    
     dateEntries.sort((a, b) => b.score - a.score);
     const topFifty = dateEntries.slice(0, 50);
     allEntries[entry.date] = topFifty;

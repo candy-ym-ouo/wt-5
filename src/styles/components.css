@@ -418,6 +418,20 @@
   margin-top: 4px;
 }
 
+.text-green {
+  color: #10b981;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.text-warning {
+  color: #f59e0b;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  text-align: center;
+}
+
 .streak-popup {
   position: fixed;
   top: 20%;

@@ -136,15 +136,33 @@ export default function Leaderboard(props: LeaderboardProps) {
   });
   const [dailyPlayerName, setDailyPlayerName] = createSignal('');
   const [dailySubmitted, setDailySubmitted] = createSignal(false);
+  const [dailySubmitMessage, setDailySubmitMessage] = createSignal('');
+  const [dailySubmitIsWarning, setDailySubmitIsWarning] = createSignal(false);
 
   const handleDailySubmit = () => {
     if (!dailyPlayerName().trim() || dailySubmitted()) return;
     if (currentScore() <= 0) return;
     
-    const success = submitDailyScore(dailyPlayerName().trim());
+    const playerName = dailyPlayerName().trim();
+    const existingEntry = dailyEntries().find(e => e.playerName === playerName);
+    
+    if (existingEntry && currentScore() <= existingEntry.score) {
+      setDailySubmitMessage(`该玩家已在榜，当前分数 ${existingEntry.score} 分高于你的 ${currentScore()} 分，未更新。`);
+      setDailySubmitIsWarning(true);
+      setDailySubmitted(true);
+      return;
+    }
+    
+    const success = submitDailyScore(playerName);
     if (success) {
       setDailySubmitted(true);
+      setDailySubmitIsWarning(false);
       setLeaderboardVersion(v => v + 1);
+      if (existingEntry) {
+        setDailySubmitMessage(`已刷新最佳成绩！从 ${existingEntry.score} 分更新为 ${currentScore()} 分。`);
+      } else {
+        setDailySubmitMessage('');
+      }
     }
   };
 
@@ -275,7 +293,9 @@ export default function Leaderboard(props: LeaderboardProps) {
 
             {dailySubmitted() && (
               <div class="section-sm">
-                <div class="text-green">✓ 分数已提交到每日排行榜！</div>
+                <div class={dailySubmitIsWarning() ? 'text-warning' : 'text-green'}>
+                  {dailySubmitMessage() || '✓ 分数已提交到每日排行榜！'}
+                </div>
               </div>
             )}
           </>
