@@ -115,6 +115,73 @@ export const [themeHintsUsed, setThemeHintsUsed] = createSignal(0);
 
 let timerInterval: number | null = null;
 
+interface PausableTimer {
+  id: number;
+  startTime: number;
+  duration: number;
+  callback: () => void;
+  paused: boolean;
+  remainingTime: number;
+}
+
+const activeTimers = new Map<string, PausableTimer>();
+
+const setPausableTimeout = (key: string, callback: () => void, duration: number): number => {
+  const existingTimer = activeTimers.get(key);
+  if (existingTimer) {
+    clearTimeout(existingTimer.id);
+  }
+
+  const timerId = window.setTimeout(() => {
+    callback();
+    activeTimers.delete(key);
+  }, duration);
+
+  activeTimers.set(key, {
+    id: timerId,
+    startTime: Date.now(),
+    duration,
+    callback,
+    paused: false,
+    remainingTime: duration,
+  });
+
+  return timerId;
+};
+
+const pauseAllTimers = () => {
+  const now = Date.now();
+  activeTimers.forEach((timer) => {
+    if (!timer.paused) {
+      const elapsed = now - timer.startTime;
+      timer.remainingTime = Math.max(0, timer.duration - elapsed);
+      timer.paused = true;
+      clearTimeout(timer.id);
+    }
+  });
+};
+
+const resumeAllTimers = () => {
+  activeTimers.forEach((timer, timerKey) => {
+    if (timer.paused) {
+      timer.startTime = Date.now();
+      timer.duration = timer.remainingTime;
+      timer.paused = false;
+      timer.id = window.setTimeout(() => {
+        timer.callback();
+        activeTimers.delete(timerKey);
+      }, timer.remainingTime);
+    }
+  });
+};
+
+const clearAllTimers = () => {
+  activeTimers.forEach((timer) => {
+    clearTimeout(timer.id);
+  });
+  activeTimers.clear();
+};
+
 export const setDifficulty = (level: DifficultyLevel, mode: DifficultyMode = 'dynamic') => {
   const config = getDifficultyConfig(level);
   setGameState(prev => ({
@@ -319,7 +386,7 @@ export const checkAchievements = () => {
       const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
       if (ach) {
         setShowAchievementPopup(ach.title);
-        setTimeout(() => setShowAchievementPopup(null), 3000);
+        setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
       }
     }
   }
@@ -361,7 +428,7 @@ const checkStreakAchievements = (
       const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
       if (ach) {
         setShowAchievementPopup(ach.title);
-        setTimeout(() => setShowAchievementPopup(null), 3000);
+        setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
       }
     }
   }
@@ -586,9 +653,9 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
       saveUnlockedAchievements(unlocked);
       const ach = ACHIEVEMENTS.find(a => a.id === 'streak_inherit');
       if (ach) {
-        setTimeout(() => {
+        setPausableTimeout('achievementPopupDelay', () => {
           setShowAchievementPopup(ach.title);
-          setTimeout(() => setShowAchievementPopup(null), 3000);
+          setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
         }, 1000);
       }
     }
@@ -967,9 +1034,9 @@ const completeChapter = () => {
     if (newAchievement) {
       const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
       if (ach) {
-        setTimeout(() => {
+        setPausableTimeout('achievementPopupDelay', () => {
           setShowAchievementPopup(ach.title);
-          setTimeout(() => setShowAchievementPopup(null), 3000);
+          setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
         }, 500);
       }
     }
@@ -1352,7 +1419,7 @@ export const nextRound = () => {
     }));
 
     if (showChange) {
-      setTimeout(() => {
+      setPausableTimeout('difficultyChange', () => {
         setGameState(prev => ({ ...prev, showDifficultyChange: false }));
       }, 3000);
     }
@@ -1375,6 +1442,8 @@ export const pauseGame = () => {
     clearInterval(peekInterval);
     peekInterval = null;
   }
+
+  pauseAllTimers();
 
   setGameState(prev => ({ ...prev, state: 'paused' }));
 };
@@ -1418,6 +1487,8 @@ export const resumeGame = () => {
     setGameState(prev => ({ ...prev, state: 'playing' }));
   }
 
+  resumeAllTimers();
+
   pauseStartTime = 0;
   savedPeekEndTime = 0;
 };
@@ -1428,6 +1499,10 @@ export const resetGame = () => {
     clearInterval(peekInterval);
     peekInterval = null;
   }
+  clearAllTimers();
+  setShowAchievementPopup(null);
+  setShowThemeRewardPopup(null);
+  setGameState(prev => ({ ...prev, showDifficultyChange: false }));
   setGameState(initialStore);
   setCurrentClues([]);
   setTargetBook(null);
@@ -1701,7 +1776,7 @@ const checkThemeRewards = (themeId: string) => {
       const reward = THEME_REWARDS.find(r => r.id === newReward);
       if (reward) {
         setShowThemeRewardPopup(reward.title);
-        setTimeout(() => setShowThemeRewardPopup(null), 3000);
+        setPausableTimeout('themeRewardPopup', () => setShowThemeRewardPopup(null), 3000);
       }
     }
   }

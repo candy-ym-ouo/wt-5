@@ -192,14 +192,14 @@ export default function App() {
 
       <GameModal />
 
-      {showAchievementPopup() && (
+      {showAchievementPopup() && state().state !== 'paused' && (
         <div class="achievement-popup">
           <div class="achievement-popup-title">🏆 成就解锁</div>
           <div class="achievement-popup-name">{showAchievementPopup()}</div>
         </div>
       )}
 
-      {showThemeRewardPopup() && (
+      {showThemeRewardPopup() && state().state !== 'paused' && (
         <div class="theme-reward-popup">
           <div class="theme-reward-popup-title">🎁 主题奖励解锁</div>
           <div class="theme-reward-popup-name">{showThemeRewardPopup()}</div>
