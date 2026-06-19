@@ -1361,12 +1361,65 @@ export const nextRound = () => {
   }
 };
 
+let pauseStartTime = 0;
+let savedPeekEndTime = 0;
+
 export const pauseGame = () => {
+  const state = gameState();
+  if (state.state !== 'playing') return;
+
+  pauseStartTime = Date.now();
+
+  if (state.powerUps.peekActive && peekInterval) {
+    savedPeekEndTime = state.powerUps.peekEndTime;
+    clearInterval(peekInterval);
+    peekInterval = null;
+  }
+
   setGameState(prev => ({ ...prev, state: 'paused' }));
 };
 
 export const resumeGame = () => {
-  setGameState(prev => ({ ...prev, state: 'playing' }));
+  const state = gameState();
+  if (state.state !== 'paused') return;
+
+  const pauseDuration = Date.now() - pauseStartTime;
+
+  if (state.powerUps.peekActive && savedPeekEndTime > 0) {
+    const newPeekEndTime = savedPeekEndTime + pauseDuration;
+    
+    peekInterval = window.setInterval(() => {
+      const currentState = gameState();
+      if (Date.now() >= currentState.powerUps.peekEndTime || !currentState.powerUps.peekActive) {
+        if (peekInterval) {
+          clearInterval(peekInterval);
+          peekInterval = null;
+        }
+        setGameState(prev => ({
+          ...prev,
+          powerUps: {
+            ...prev.powerUps,
+            peekActive: false,
+            peekEndTime: 0,
+          },
+        }));
+      }
+    }, 200);
+
+    setGameState(prev => ({
+      ...prev,
+      state: 'playing',
+      powerUps: {
+        ...prev.powerUps,
+        peekEndTime: newPeekEndTime,
+      },
+    }));
+  } else {
+    setGameState(prev => ({ ...prev, state: 'playing' }));
+  }
+
+  pauseStartTime = 0;
+  savedPeekEndTime = 0;
 };
 
 export const resetGame = () => {

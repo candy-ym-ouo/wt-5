@@ -21,6 +21,8 @@ import {
   hasSavedStreak,
   getSavedStreakInfo,
   startGameWithStreak,
+  resumeGame,
+  currentClues,
 } from '../store/gameStore';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
@@ -49,6 +51,9 @@ export default function GameModal() {
   const isThemeMode = createMemo(() => state().currentThemeId !== null);
   const currentDiffConfig = createMemo(() => getDifficultyConfig(state().difficultyLevel));
   const themeInfo = createMemo(() => getCurrentThemeInfo());
+  const clues = createMemo(() => currentClues());
+  const unlockedClueCount = createMemo(() => clues().filter(c => c.unlocked).length);
+  const totalClueCount = createMemo(() => clues().length);
   
   const savedStreak = createMemo(() => getSavedStreakInfo());
   const hasStreak = createMemo(() => hasSavedStreak());
@@ -692,6 +697,61 @@ export default function GameModal() {
             </button>
             <button class="modal-button secondary" onClick={resetGame}>
               返回主页
+            </button>
+          </div>
+          {showLeaderboard() && (
+            <Leaderboard onClose={() => setShowLeaderboard(false)} />
+          )}
+        </div>
+      )}
+
+      {gameStatus() === 'paused' && (
+        <div class="modal-overlay">
+          <div class="modal-content pause-modal">
+            <div class="modal-title">⏸️ 游戏暂停</div>
+            <div class="modal-subtitle">
+              游戏已暂停，休息一下再继续吧！
+            </div>
+
+            <div class="pause-stats">
+              <div class="pause-stat-item">
+                <div class="pause-stat-icon">⏱️</div>
+                <div class="pause-stat-value">{Math.floor(state().timeRemaining / 60)}:{(state().timeRemaining % 60).toString().padStart(2, '0')}</div>
+                <div class="pause-stat-label">剩余时间</div>
+              </div>
+              <div class="pause-stat-item">
+                <div class="pause-stat-icon">🎯</div>
+                <div class="pause-stat-value">{state().score}</div>
+                <div class="pause-stat-label">当前得分</div>
+              </div>
+              <div class="pause-stat-item">
+                <div class="pause-stat-icon">🔍</div>
+                <div class="pause-stat-value">{unlockedClueCount()}/{totalClueCount()}</div>
+                <div class="pause-stat-label">线索解锁</div>
+              </div>
+              <div class="pause-stat-item">
+                <div class="pause-stat-icon">📖</div>
+                <div class="pause-stat-value">{state().currentLevel}</div>
+                <div class="pause-stat-label">{isChapterMode() ? '当前任务' : '当前关卡'}</div>
+              </div>
+            </div>
+
+            {!isChapterMode() && (
+              <div class="pause-difficulty-info">
+                <span class="pause-diff-icon">{currentDiffConfig().icon}</span>
+                <span class="pause-diff-name">{currentDiffConfig().name}难度</span>
+                {state().difficultyMode === 'dynamic' && <span class="pause-diff-mode">🔄 动态</span>}
+              </div>
+            )}
+
+            <button class="modal-button pause-resume-btn" onClick={resumeGame}>
+              ▶️ 继续游戏
+            </button>
+            <button class="modal-button secondary" onClick={() => setShowLeaderboard(true)}>
+              🏆 排行榜
+            </button>
+            <button class="modal-button secondary" onClick={resetGame}>
+              🏠 返回主页
             </button>
           </div>
           {showLeaderboard() && (

@@ -8,7 +8,7 @@ import GameModal from './components/GameModal';
 import Leaderboard from './components/Leaderboard';
 import ChapterProgress from './components/ChapterProgress';
 import StreakDisplay from './components/StreakDisplay';
-import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo } from './store/gameStore';
+import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame } from './store/gameStore';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
 
@@ -86,6 +86,16 @@ export default function App() {
                 {RARITY_CONFIG[currentBook()!.rarity].icon} {RARITY_CONFIG[currentBook()!.rarity].name}
               </div>
             </div>
+          )}
+          {isPlaying() && (
+            <button 
+              class="stat-item pause-button"
+              onClick={pauseGame}
+              title="暂停游戏"
+            >
+              <div class="stat-label">⏸️ 暂停</div>
+              <div class="stat-value small-stat-value">暂停</div>
+            </button>
           )}
           <button 
             class="stat-item rank-button"
