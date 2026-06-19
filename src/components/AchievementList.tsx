@@ -1,10 +1,11 @@
+import { createMemo } from 'solid-js';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { gameState } from '../store/gameStore';
 import { For } from 'solid-js';
 
 export default function AchievementList() {
-  const state = gameState();
-  const unlockedIds = state.unlockedAchievements;
+  const unlockedIds = createMemo(() => gameState().unlockedAchievements);
+  const unlockedCount = createMemo(() => unlockedIds().length);
 
   return (
     <div class="sidebar-section">
@@ -12,16 +13,16 @@ export default function AchievementList() {
         <span>🏆</span>
         <span>成就</span>
         <span class="achievement-count">
-          {unlockedIds.length}/{ACHIEVEMENTS.length}
+          {unlockedCount()}/{ACHIEVEMENTS.length}
         </span>
       </div>
       <div class="achievements-container">
         <For each={ACHIEVEMENTS}>
           {(achievement) => {
-            const isUnlocked = unlockedIds.includes(achievement.id);
+            const isUnlocked = createMemo(() => unlockedIds().includes(achievement.id));
             return (
               <div
-                class={`achievement-icon-item ${isUnlocked ? '' : 'locked'}`}
+                class={`achievement-icon-item ${isUnlocked() ? '' : 'locked'}`}
                 title={`${achievement.title} - ${achievement.description}`}
               >
                 {achievement.icon}

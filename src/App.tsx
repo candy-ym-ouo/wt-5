@@ -1,4 +1,4 @@
-import { createSignal } from 'solid-js';
+import { createSignal, createMemo } from 'solid-js';
 import Bookshelf from './components/Bookshelf';
 import ClueCards from './components/ClueCards';
 import HintSystem from './components/HintSystem';
@@ -10,7 +10,10 @@ import { gameState, showAchievementPopup } from './store/gameStore';
 
 export default function App() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
-  const state = gameState();
+  const state = createMemo(() => gameState());
+  const isPlaying = createMemo(() => state().state === 'playing');
+  const currentScore = createMemo(() => state().score);
+  const currentLevel = createMemo(() => state().currentLevel);
 
   return (
     <div class="game-container">
@@ -20,11 +23,11 @@ export default function App() {
           <Timer />
           <div class="stat-item">
             <div class="stat-label">🎯 得分</div>
-            <div class="stat-value">{state.score}</div>
+            <div class="stat-value">{currentScore()}</div>
           </div>
           <div class="stat-item">
             <div class="stat-label">📖 关卡</div>
-            <div class="stat-value">{state.currentLevel}</div>
+            <div class="stat-value">{currentLevel()}</div>
           </div>
           <button 
             class="stat-item rank-button"
@@ -47,7 +50,7 @@ export default function App() {
               <span>当前任务</span>
             </div>
             <div class="current-task-card">
-              {state.state === 'playing' ? (
+              {isPlaying() ? (
                 <>
                   <div class="task-title">找到神秘藏书</div>
                   <div class="task-desc">根据右侧线索，在书架上找到目标书籍</div>
@@ -58,7 +61,7 @@ export default function App() {
             </div>
           </div>
 
-          {state.state === 'playing' && (
+          {isPlaying() && (
             <>
               <ClueCards />
               <HintSystem />

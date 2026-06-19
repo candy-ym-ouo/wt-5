@@ -1,8 +1,9 @@
+import { createMemo } from 'solid-js';
 import { currentClues } from '../store/gameStore';
 import { For } from 'solid-js';
 
 export default function ClueCards() {
-  const clues = currentClues();
+  const clues = createMemo(() => currentClues());
 
   return (
     <div class="sidebar-section">
@@ -10,7 +11,7 @@ export default function ClueCards() {
         <span>📜</span>
         <span>线索卡片</span>
       </div>
-      <For each={clues}>
+      <For each={clues()}>
         {(clue) => (
           <div class={`clue-card ${clue.unlocked ? '' : 'locked'}`}>
             <div class="clue-title">{clue.title}</div>

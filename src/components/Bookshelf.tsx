@@ -195,7 +195,8 @@ export default function Bookshelf() {
   };
 
   const handleBookClick = (book: Book, sprite: PIXI.Graphics) => {
-    if (gameState().state !== 'playing') return;
+    const gameStatus = gameState().state;
+    if (gameStatus !== 'playing') return;
 
     const isCorrect = selectBook(book.id);
 

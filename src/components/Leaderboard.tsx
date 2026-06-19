@@ -1,4 +1,4 @@
-import { createSignal, For } from 'solid-js';
+import { createSignal, createMemo, For } from 'solid-js';
 import { getLeaderboard, saveLeaderboardEntry } from '../utils/storage';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { gameState } from '../store/gameStore';
@@ -12,7 +12,9 @@ export default function Leaderboard(props: LeaderboardProps) {
   const [leaderboard, setLeaderboard] = createSignal(getLeaderboard());
   const [playerName, setPlayerName] = createSignal('');
   const [hasSubmitted, setHasSubmitted] = createSignal(false);
-  const state = gameState();
+  const state = createMemo(() => gameState());
+  const currentScore = createMemo(() => state().score);
+  const unlockedIds = createMemo(() => state().unlockedAchievements);
 
   const getRankClass = (index: number): string => {
     if (index === 0) return 'gold';
@@ -27,9 +29,9 @@ export default function Leaderboard(props: LeaderboardProps) {
     const entry = {
       id: Date.now().toString(),
       playerName: playerName().trim(),
-      score: state.score,
-      timeUsed: 180 - state.timeRemaining,
-      hintsUsed: state.hintsUsed,
+      score: currentScore(),
+      timeUsed: 180 - state().timeRemaining,
+      hintsUsed: state().hintsUsed,
       date: Date.now(),
     };
 
@@ -78,9 +80,9 @@ export default function Leaderboard(props: LeaderboardProps) {
               )}
             </div>
 
-            {state.score > 0 && !hasSubmitted() && (
+            {currentScore() > 0 && !hasSubmitted() && (
               <div class="section-sm">
-                <div class="text-gold">你的分数：{state.score} 分</div>
+                <div class="text-gold">你的分数：{currentScore()} 分</div>
                 <input
                   type="text"
                   class="input-field"
@@ -101,9 +103,9 @@ export default function Leaderboard(props: LeaderboardProps) {
             <div class="achievements-grid">
               <For each={ACHIEVEMENTS}>
                 {(achievement) => {
-                  const isUnlocked = state.unlockedAchievements.includes(achievement.id);
+                  const isUnlocked = createMemo(() => unlockedIds().includes(achievement.id));
                   return (
-                    <div class={`achievement-item ${isUnlocked ? 'unlocked' : 'locked'}`}>
+                    <div class={`achievement-item ${isUnlocked() ? 'unlocked' : 'locked'}`}>
                       <div class="achievement-icon">{achievement.icon}</div>
                       <div class="achievement-name">{achievement.title}</div>
                       <div class="achievement-desc">{achievement.description}</div>
