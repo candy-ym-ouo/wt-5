@@ -10,6 +10,8 @@ import {
   hasSavedProgress,
   continueSavedGame,
   startChapterGame,
+  restartCurrentTask,
+  restartChapter,
 } from '../store/gameStore';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
@@ -253,13 +255,24 @@ export default function GameModal() {
 
             {isChapterMode() && (
               <div class="chapter-save-hint">
-                💾 进度已保存，下次可以继续挑战
+                💾 进度已保存，可随时继续挑战
               </div>
             )}
 
-            <button class="modal-button" onClick={startGame}>
-              {isChapterMode() ? '重新挑战' : '再来一局'}
-            </button>
+            {isChapterMode() ? (
+              <>
+                <button class="modal-button" onClick={restartCurrentTask}>
+                  🔄 重试当前任务
+                </button>
+                <button class="modal-button secondary" onClick={restartChapter}>
+                  🔁 重新开始章节
+                </button>
+              </>
+            ) : (
+              <button class="modal-button" onClick={startGame}>
+                再来一局
+              </button>
+            )}
             <button class="modal-button secondary" onClick={() => setShowLeaderboard(true)}>
               排行榜
             </button>
