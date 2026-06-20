@@ -106,6 +106,9 @@ import {
   calculateCommissionRewards,
   DIFFICULTY_TIME_MAP,
 } from '../data/commissions';
+import {
+  recordBookFound,
+} from './codexStore';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -2226,6 +2229,7 @@ export const selectBook = (bookId: string): boolean => {
         checkStreakAchievements(newStreakCount);
         computeGameRating();
         updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+        recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
         setCollectionCount(getUnlockedCollectionCount());
 
         if (nextTaskIndex >= tasks.length) {
@@ -2268,6 +2272,7 @@ export const selectBook = (bookId: string): boolean => {
       checkStreakAchievements(newStreakCount);
       computeGameRating();
       updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
       setCollectionCount(getUnlockedCollectionCount());
     }
     return true;
@@ -3308,6 +3313,7 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       checkStreakAchievements(newStreakCount);
       computeGameRating();
       updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
       setCollectionCount(getUnlockedCollectionCount());
 
       const themesForBook = getThemesForBook(bookId);
@@ -3350,6 +3356,7 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       checkStreakAchievements(newStreakCount);
       computeGameRating();
       updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
       setCollectionCount(getUnlockedCollectionCount());
 
       const themesForBook = getThemesForBook(bookId);

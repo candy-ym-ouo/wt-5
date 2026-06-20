@@ -11,8 +11,10 @@ import ChapterProgress from './components/ChapterProgress';
 import StreakDisplay from './components/StreakDisplay';
 import TutorialGuide from './components/TutorialGuide';
 import CustomerCommissionPanel from './components/CustomerCommission';
+import CodexCenter from './components/CodexCenter';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
+import { getCodexStateInfo, openCodex, closeCodex } from './store/codexStore';
 import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
@@ -45,6 +47,7 @@ export default function App() {
   const commInfo = createMemo(() => getCommissionInfo());
   const coins = createMemo(() => getCoins());
   const storeLevel = createMemo(() => getStoreLevel());
+  const codexInfo = createMemo(() => getCodexStateInfo());
 
   return (
     <div class="game-container">
@@ -159,6 +162,14 @@ export default function App() {
           >
             <div class="stat-label">👔 店长</div>
             <div class="stat-value small-stat-value">经营</div>
+          </button>
+          <button 
+            class="stat-item codex-button"
+            onClick={() => openCodex()}
+            title="图鉴中心"
+          >
+            <div class="stat-label">📖 图鉴</div>
+            <div class="stat-value small-stat-value">{codexInfo().stats.collectedBooks}/{codexInfo().stats.totalBooks}</div>
           </button>
         </div>
       </header>
@@ -422,6 +433,18 @@ export default function App() {
       )}
 
       <TutorialGuide onClose={() => {}} />
+
+      {codexInfo().isVisible && (
+        <CodexCenter onClose={closeCodex} />
+      )}
+
+      {codexInfo().easterEggPopup && state().state !== 'paused' && (
+        <div class="easter-egg-popup">
+          <div class="easter-egg-popup-icon">🥚</div>
+          <div class="easter-egg-popup-title">🎊 发现隐藏彩蛋！</div>
+          <div class="easter-egg-popup-desc">{codexInfo().easterEggPopup}</div>
+        </div>
+      )}
     </div>
   );
 }
