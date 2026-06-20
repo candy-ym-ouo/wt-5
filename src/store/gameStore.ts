@@ -6,9 +6,10 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { getChapterById, getNextChapter } from '../data/chapters';
 import {
   getDifficultyConfig,
-  selectRandomTargetByDifficulty,
+  selectSmartTargetBook,
   adjustDifficulty,
   calculateScoreWithDifficulty,
+  getRecentBookGenresFromHistory,
 } from '../data/difficulty';
 import {
   createInitialPowerUpState,
@@ -1288,7 +1289,19 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
   const diffMode = difficultyMode || state.difficultyMode;
   const config = getDifficultyConfig(diffLevel);
 
-  const book = selectRandomTargetByDifficulty(diffLevel, []);
+  const collectionEntries = getAllCollectionEntries();
+  const smartSelection = selectSmartTargetBook({
+    difficultyLevel: diffLevel,
+    excludeIds: [],
+    recentBookGenres: [],
+    recentBookIds: [],
+    collectionEntries,
+    consecutiveCorrect: 0,
+    currentLevel: 1,
+    targetFamiliarRatio: 0.5,
+    genreDiversityWindow: 3,
+  });
+  const book = smartSelection.book;
   setupRound(book);
   setFoundGenres([]);
   setGameStartTime(Date.now());
@@ -1340,7 +1353,19 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
     const diffMode: DifficultyMode = 'dynamic';
     const config = getDifficultyConfig(diffLevel);
 
-    const book = selectRandomTargetByDifficulty(diffLevel, []);
+    const collectionEntries = getAllCollectionEntries();
+    const smartSelection = selectSmartTargetBook({
+      difficultyLevel: diffLevel,
+      excludeIds: [],
+      recentBookGenres: [],
+      recentBookIds: [],
+      collectionEntries,
+      consecutiveCorrect: savedStreak.currentStreak,
+      currentLevel: 1,
+      targetFamiliarRatio: 0.3,
+      genreDiversityWindow: 3,
+    });
+    const book = smartSelection.book;
     setupRound(book);
     setFoundGenres([]);
     setGameStartTime(Date.now());
@@ -2396,7 +2421,21 @@ export const nextRound = () => {
     }
 
     const newConfig = getDifficultyConfig(newDifficulty);
-    const book = selectRandomTargetByDifficulty(newDifficulty, state.foundBooks);
+    
+    const recentGenres = getRecentBookGenresFromHistory(state.roundDetails);
+    const collectionEntries = getAllCollectionEntries();
+    const smartSelection = selectSmartTargetBook({
+      difficultyLevel: newDifficulty,
+      excludeIds: state.foundBooks,
+      recentBookGenres: recentGenres,
+      recentBookIds: state.foundBooks,
+      collectionEntries,
+      consecutiveCorrect: state.consecutiveCorrect,
+      currentLevel: state.currentLevel,
+      targetFamiliarRatio: 0.4,
+      genreDiversityWindow: 3,
+    });
+    const book = smartSelection.book;
     setupRound(book);
 
     const newHistory = [...state.difficultyHistory, newDifficulty];
@@ -3422,11 +3461,24 @@ export const isDailyChallengeMode = (): boolean => {
 const generateRushBooks = (difficulty: DifficultyLevel): Book[] => {
   const books: Book[] = [];
   const usedIds: string[] = [];
+  const usedGenres: string[] = [];
+  const collectionEntries = getAllCollectionEntries();
   
   for (let i = 0; i < 3; i++) {
-    const book = selectRandomTargetByDifficulty(difficulty, usedIds);
-    books.push(book);
-    usedIds.push(book.id);
+    const smartSelection = selectSmartTargetBook({
+      difficultyLevel: difficulty,
+      excludeIds: usedIds,
+      recentBookGenres: usedGenres,
+      recentBookIds: usedIds,
+      collectionEntries,
+      consecutiveCorrect: 0,
+      currentLevel: i + 1,
+      targetFamiliarRatio: 0.3,
+      genreDiversityWindow: 3,
+    });
+    books.push(smartSelection.book);
+    usedIds.push(smartSelection.book.id);
+    usedGenres.push(smartSelection.book.genre);
   }
   
   return books;

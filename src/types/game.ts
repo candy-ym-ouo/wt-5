@@ -648,3 +648,32 @@ export interface RandomEventResult {
   timeAdjustment: number;
   messages: string[];
 }
+
+export interface BookFamiliarity {
+  bookId: string;
+  familiarityScore: number;
+  totalTimesFound: number;
+  avgFindTime: number;
+  avgHintsUsed: number;
+}
+
+export type FamiliarityLevel = 'unfamiliar' | 'familiar' | 'mastered';
+
+export interface SmartBookSelectionOptions {
+  difficultyLevel: DifficultyLevel;
+  excludeIds?: string[];
+  recentBookGenres?: string[];
+  recentBookIds?: string[];
+  collectionEntries?: Record<string, CollectionEntry>;
+  consecutiveCorrect?: number;
+  currentLevel?: number;
+  targetFamiliarRatio?: number;
+  genreDiversityWindow?: number;
+}
+
+export interface SmartBookSelectionResult {
+  book: Book;
+  selectionReason: string;
+  familiarityLevel: FamiliarityLevel;
+  isNewGenre: boolean;
+}
