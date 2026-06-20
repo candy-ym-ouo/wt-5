@@ -1,9 +1,9 @@
 import { onMount, onCleanup, createSignal, createEffect, createMemo, For } from 'solid-js';
 import * as PIXI from 'pixi.js';
 import { BOOKS, SHELF_COUNT } from '../data/books';
-import { selectBookWithRarity, gameState, showWrongWarning, lastPenaltyInfo, getWrongPenaltyInfo, getThemeFilterInfo, activateThemeFilter, judgeThemeFilter } from '../store/gameStore';
+import { selectBookWithRarity, gameState, showWrongWarning, lastPenaltyInfo, getWrongPenaltyInfo, getThemeFilterInfo, activateThemeFilter, judgeThemeFilter, currentClues } from '../store/gameStore';
 import { getThemeById } from '../data/themes';
-import type { Book, PenaltyLevel } from '../types/game';
+import type { Book, PenaltyLevel, ClueType } from '../types/game';
 
 export default function Bookshelf() {
   let containerRef: HTMLDivElement | undefined;
@@ -13,6 +13,10 @@ export default function Bookshelf() {
   
   const [hoveredBook, setHoveredBook] = createSignal<Book | null>(null);
   const [shakeTrigger, setShakeTrigger] = createSignal(0);
+
+  const unlockedClueTypes = createMemo<Set<ClueType>>(() => {
+    return new Set(currentClues().filter(c => c.unlocked).map(c => c.type));
+  });
 
   const penaltyLevelText = (level: PenaltyLevel): string => {
     switch (level) {
@@ -507,27 +511,48 @@ export default function Bookshelf() {
             <div class="book-popup-meta"><span class="meta-label">📚 分类</span>{hoveredBook()?.genre}</div>
             <div class="book-popup-meta"><span class="meta-label">🪜 书架</span>第{(hoveredBook()?.shelf ?? 0) + 1}层</div>
           </div>
-          <div class="book-popup-section">
-            <div class="popup-section-title">📖 简介</div>
-            <div class="book-popup-desc">{hoveredBook()?.description}</div>
-          </div>
-          <div class="book-popup-section">
-            <div class="popup-section-title">✨ 背景故事</div>
-            <div class="book-popup-story">{hoveredBook()?.backgroundStory}</div>
-          </div>
-          <div class="book-popup-section">
-            <div class="popup-section-title">🔍 描述线索</div>
-            <div class="book-popup-clues">
-              <For each={hoveredBook()?.descriptionClues}>
-                {(clue) => (
-                  <div class="popup-clue-item">
-                    <span class="clue-bullet">•</span>
-                    <span>{clue}</span>
-                  </div>
-                )}
-              </For>
+          {unlockedClueTypes().has('description') ? (
+            <div class="book-popup-section">
+              <div class="popup-section-title">📖 简介</div>
+              <div class="book-popup-desc">{hoveredBook()?.description}</div>
             </div>
-          </div>
+          ) : (
+            <div class="book-popup-section">
+              <div class="popup-section-title">📖 简介</div>
+              <div class="book-popup-locked">🔒 解锁「描述」线索后可见</div>
+            </div>
+          )}
+          {unlockedClueTypes().has('background') ? (
+            <div class="book-popup-section">
+              <div class="popup-section-title">✨ 背景故事</div>
+              <div class="book-popup-story">{hoveredBook()?.backgroundStory}</div>
+            </div>
+          ) : (
+            <div class="book-popup-section">
+              <div class="popup-section-title">✨ 背景故事</div>
+              <div class="book-popup-locked">🔒 解锁「背景故事」线索后可见</div>
+            </div>
+          )}
+          {unlockedClueTypes().has('description') ? (
+            <div class="book-popup-section">
+              <div class="popup-section-title">🔍 描述线索</div>
+              <div class="book-popup-clues">
+                <For each={hoveredBook()?.descriptionClues}>
+                  {(clue) => (
+                    <div class="popup-clue-item">
+                      <span class="clue-bullet">•</span>
+                      <span>{clue}</span>
+                    </div>
+                  )}
+                </For>
+              </div>
+            </div>
+          ) : (
+            <div class="book-popup-section">
+              <div class="popup-section-title">🔍 描述线索</div>
+              <div class="book-popup-locked">🔒 解锁「描述」线索后可见</div>
+            </div>
+          )}
         </div>
       )}
     </div>

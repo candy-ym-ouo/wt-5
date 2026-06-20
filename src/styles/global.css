@@ -4812,6 +4812,17 @@ body {
   font-style: italic;
 }
 
+.book-popup-locked {
+  font-size: 0.8rem;
+  color: #8b7355;
+  font-style: italic;
+  text-align: center;
+  padding: 12px 8px;
+  background: rgba(139, 69, 19, 0.1);
+  border-radius: 6px;
+  border: 1px dashed rgba(139, 69, 19, 0.3);
+}
+
 .book-popup-clues {
   display: flex;
   flex-direction: column;

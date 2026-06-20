@@ -170,6 +170,7 @@ export default function GameModal() {
             <div class="modal-subtitle">
               欢迎来到神秘的旧书店！<br />
               根据线索卡片的提示，在书架上找到指定的书籍。<br />
+              共 7 类线索可解锁：年代、作者、分类、书架、描述、背景故事、书名。<br />
               使用提示可以解锁更多线索，但会扣除分数。<br />
               时间有限，越快找到得分越高！
             </div>
@@ -180,8 +181,12 @@ export default function GameModal() {
                 <div class="game-stat-label">3分钟限时</div>
               </div>
               <div class="game-stat">
+                <div class="game-stat-value">🔍</div>
+                <div class="game-stat-label">7类线索</div>
+              </div>
+              <div class="game-stat">
                 <div class="game-stat-value">💡</div>
-                <div class="game-stat-label">5次提示</div>
+                <div class="game-stat-label">2-9次提示</div>
               </div>
               <div class="game-stat">
                 <div class="game-stat-value">🎯</div>
