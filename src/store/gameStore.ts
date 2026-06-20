@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage, RatingResult, RatingInput } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage, RatingResult, RatingInput, RandomEvent, ActiveRandomEvent, RandomEventResult } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, buildClueContent } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -65,6 +65,10 @@ import {
 } from '../data/streaks';
 import { generateDailyChallenge, getTodayDateKey, getDailyChallengeBooks } from '../data/dailyChallenge';
 import { calculateRating } from '../data/rating';
+import {
+  selectRandomEvent,
+  calculateRandomEventImpact,
+} from '../data/randomEvents';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -156,6 +160,14 @@ const initialStore: GameStore = {
     completed: false,
     perfectRun: false,
   },
+  randomEvent: {
+    activeEvent: null,
+    showEventPopup: false,
+    eventHistory: [],
+    eventsTriggeredThisGame: 0,
+    eventsSurvived: 0,
+    lastEventTriggeredAt: 0,
+  },
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -190,6 +202,13 @@ export const [lastRushTimeBonus, setLastRushTimeBonus] = createSignal(0);
 export const [showRushCompletePopup, setShowRushCompletePopup] = createSignal(false);
 export const [currentRating, setCurrentRating] = createSignal<RatingResult | null>(null);
 export const [collectionCount, setCollectionCount] = createSignal(getUnlockedCollectionCount());
+export const [showRandomEventPopup, setShowRandomEventPopup] = createSignal<RandomEventResult | null>(null);
+export const [lastRandomEvent, setLastRandomEvent] = createSignal<ActiveRandomEvent | null>(null);
+export const [shuffledBookPositions, setShuffledBookPositions] = createSignal<Record<string, { shelf: number; position: number }> | null>(null);
+export const [obscuredBookIds, setObscuredBookIds] = createSignal<Set<string>>(new Set());
+export const [falselyHighlightedBookIds, setFalselyHighlightedBookIds] = createSignal<Set<string>>(new Set());
+export const [hiddenClueIds, setHiddenClueIds] = createSignal<Set<string>>(new Set());
+export const [lockedClueTypes, setLockedClueTypes] = createSignal<Set<string>>(new Set());
 
 let timerInterval: number | null = null;
 
@@ -258,6 +277,281 @@ const clearAllTimers = () => {
     clearTimeout(timer.id);
   });
   activeTimers.clear();
+};
+
+const clearRandomEventEffects = () => {
+  setObscuredBookIds(new Set<string>());
+  setFalselyHighlightedBookIds(new Set<string>());
+  setHiddenClueIds(new Set<string>());
+  setLockedClueTypes(new Set<string>());
+  setShuffledBookPositions(null);
+};
+
+const applyRandomEventEffects = (event: RandomEvent): void => {
+  const state = gameState();
+  const targetBookId = state.targetBookId;
+
+  for (const effect of event.effects) {
+    switch (effect.type) {
+      case 'book_obscure': {
+        const allBookIds = BOOKS.map(b => b.id);
+        const shuffled = [...allBookIds].sort(() => Math.random() - 0.5);
+        const obscureCount = Math.floor(shuffled.length * 0.7);
+        const toObscure = new Set<string>(shuffled.slice(0, obscureCount));
+        setObscuredBookIds(toObscure);
+        if (effect.duration) {
+          setPausableTimeout(`randomEvent_obscure_${event.id}`, () => {
+            setObscuredBookIds(new Set<string>());
+          }, effect.duration);
+        }
+        break;
+      }
+      case 'book_false_highlight': {
+        const wrongBooks = BOOKS.filter(b => b.id !== targetBookId);
+        const shuffled = [...wrongBooks].sort(() => Math.random() - 0.5);
+        const toHighlight = new Set<string>(shuffled.slice(0, effect.value).map(b => b.id));
+        setFalselyHighlightedBookIds(toHighlight);
+        if (effect.duration) {
+          setPausableTimeout(`randomEvent_highlight_${event.id}`, () => {
+            setFalselyHighlightedBookIds(new Set<string>());
+          }, effect.duration);
+        }
+        break;
+      }
+      case 'layout_shuffle': {
+        const shuffledPositions: Record<string, { shelf: number; position: number }> = {};
+        BOOKS.forEach(book => {
+          const newShelf = Math.floor(Math.random() * 5);
+          const newPosition = Math.floor(Math.random() * 10);
+          shuffledPositions[book.id] = { shelf: newShelf, position: newPosition };
+        });
+        setShuffledBookPositions(shuffledPositions);
+        break;
+      }
+      case 'hint_lock': {
+        const allClueTypes = ['author', 'year', 'genre', 'title', 'shelf', 'description', 'background'];
+        const shuffled = [...allClueTypes].sort(() => Math.random() - 0.5);
+        const toLock = new Set<string>(shuffled.slice(0, effect.value));
+        setLockedClueTypes(toLock);
+        if (effect.duration) {
+          setPausableTimeout(`randomEvent_lockClue_${event.id}`, () => {
+            setLockedClueTypes(new Set<string>());
+          }, effect.duration);
+        }
+        break;
+      }
+      case 'clue_hide': {
+        const clues = currentClues();
+        const unlockedClues = clues.filter(c => c.unlocked);
+        if (unlockedClues.length > 0) {
+          const shuffled = [...unlockedClues].sort(() => Math.random() - 0.5);
+          const toHide = new Set<string>(shuffled.slice(0, effect.value).map(c => c.id));
+          setHiddenClueIds(toHide);
+          if (effect.duration) {
+            setPausableTimeout(`randomEvent_hideClue_${event.id}`, () => {
+              setHiddenClueIds(new Set<string>());
+            }, effect.duration);
+          }
+        }
+        break;
+      }
+      case 'clue_reveal': {
+        const clues = currentClues();
+        const book = targetBook();
+        if (!book) break;
+        
+        let cluesToReveal = effect.value;
+        const updatedClues = [...clues];
+        
+        for (let i = 0; i < updatedClues.length && cluesToReveal > 0; i++) {
+          if (!updatedClues[i].unlocked) {
+            const content = buildClueContent(updatedClues[i].type, book);
+            updatedClues[i] = { ...updatedClues[i], unlocked: true, content };
+            cluesToReveal--;
+          }
+        }
+        
+        setCurrentClues(updatedClues);
+        
+        const newUnlockedClues = updatedClues
+          .filter(c => c.unlocked)
+          .map(c => c.id);
+          
+        setGameState(prev => ({
+          ...prev,
+          unlockedClues: newUnlockedClues,
+          themeFilter: {
+            ...prev.themeFilter,
+            available: newUnlockedClues.length >= 3 && !prev.themeFilter.usedThisRound,
+          },
+        }));
+        break;
+      }
+    }
+  }
+};
+
+export const triggerRandomEvent = (): RandomEventResult | null => {
+  const state = gameState();
+  if (state.state !== 'playing') return null;
+  if (state.randomEvent.activeEvent) return null;
+
+  const event = selectRandomEvent(
+    state.currentLevel,
+    state.difficultyLevel,
+    state.gameMode,
+    state.randomEvent.lastEventTriggeredAt
+  );
+
+  if (!event) return null;
+
+  const impact = calculateRandomEventImpact(event);
+  
+  const maxDuration = Math.max(...event.effects.map(e => e.duration || 0));
+  const expiresAt = maxDuration > 0 ? Date.now() + maxDuration : undefined;
+
+  const activeEvent: ActiveRandomEvent = {
+    event,
+    startTime: Date.now(),
+    endTime: Date.now() + 30000,
+    expiresAt,
+    activated: true,
+    resolved: false,
+    effectsApplied: false,
+    roundAffected: state.currentLevel,
+  };
+
+  const now = Date.now();
+
+  setGameState(prev => ({
+    ...prev,
+    timeRemaining: Math.max(prev.timeRemaining + impact.timeAdjustment, 0),
+    score: Math.max(prev.score + impact.scoreAdjustment, 0),
+    randomEvent: {
+      ...prev.randomEvent,
+      activeEvent,
+      showEventPopup: true,
+      eventsTriggeredThisGame: prev.randomEvent.eventsTriggeredThisGame + 1,
+      lastEventTriggeredAt: now,
+      eventHistory: [
+        ...prev.randomEvent.eventHistory,
+        {
+          eventId: event.id,
+          round: state.currentLevel,
+          timestamp: now,
+          result: event.positive ? 'positive' : 'negative',
+        },
+      ],
+    },
+  }));
+
+  applyRandomEventEffects(event);
+
+  const result: RandomEventResult = {
+    event,
+    scoreAdjustment: impact.scoreAdjustment,
+    timeAdjustment: impact.timeAdjustment,
+    messages: impact.messages,
+  };
+
+  setLastRandomEvent(activeEvent);
+  setShowRandomEventPopup(result);
+  setPausableTimeout(`randomEventPopup_${event.id}`, () => {
+    setShowRandomEventPopup(null);
+  }, 4000);
+
+  return result;
+};
+
+export const resolveRandomEvent = (): void => {
+  const state = gameState();
+  if (!state.randomEvent.activeEvent) return;
+
+  clearRandomEventEffects();
+
+  setGameState(prev => ({
+    ...prev,
+    randomEvent: {
+      ...prev.randomEvent,
+      activeEvent: null,
+      showEventPopup: false,
+      eventsSurvived: prev.randomEvent.eventsSurvived + 1,
+    },
+  }));
+
+  setLastRandomEvent(null);
+};
+
+export const dismissRandomEvent = (): void => {
+  setGameState(prev => ({
+    ...prev,
+    randomEvent: {
+      ...prev.randomEvent,
+      showEventPopup: false,
+    },
+  }));
+};
+
+export const getRandomEventInfo = () => {
+  const state = gameState();
+  const active = state.randomEvent.activeEvent;
+  return {
+    activeEvent: active,
+    eventHistory: state.randomEvent.eventHistory,
+    eventsTriggeredThisGame: state.randomEvent.eventsTriggeredThisGame,
+    eventsSurvived: state.randomEvent.eventsSurvived,
+    obscuredBookIds: obscuredBookIds(),
+    falselyHighlightedBookIds: falselyHighlightedBookIds(),
+    hiddenClueIds: hiddenClueIds(),
+    lockedClueTypes: lockedClueTypes(),
+    shuffledBookPositions: shuffledBookPositions(),
+  };
+};
+
+export const hasRandomEventActive = (): boolean => {
+  return gameState().randomEvent.activeEvent !== null;
+};
+
+export const checkRandomEventAchievements = () => {
+  const state = gameState();
+  const unlocked = [...state.unlockedAchievements];
+  let newAchievement: string | null = null;
+
+  if (state.randomEvent.eventsTriggeredThisGame >= 1 && !unlocked.includes('event_survivor')) {
+    if (unlockSingleAchievement('event_survivor')) {
+      newAchievement = 'event_survivor';
+    }
+  }
+
+  if (state.randomEvent.eventsSurvived >= 5 && !unlocked.includes('event_adapter')) {
+    if (unlockSingleAchievement('event_adapter')) {
+      newAchievement = 'event_adapter';
+    }
+  }
+
+  const totalEvents = state.randomEvent.eventHistory.length;
+  const positiveEvents = state.randomEvent.eventHistory.filter(e => e.result === 'positive').length;
+  
+  if (totalEvents >= 10 && positiveEvents >= totalEvents * 0.5 && !unlocked.includes('lucky_charm')) {
+    if (unlockSingleAchievement('lucky_charm')) {
+      newAchievement = 'lucky_charm';
+    }
+  }
+
+  const negativeEvents = state.randomEvent.eventHistory.filter(e => e.result === 'negative').length;
+  if (negativeEvents >= 8 && !unlocked.includes('troubleshooter')) {
+    if (unlockSingleAchievement('troubleshooter')) {
+      newAchievement = 'troubleshooter';
+    }
+  }
+
+  if (newAchievement) {
+    const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
+    if (ach) {
+      setShowAchievementPopup(ach.title);
+      setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
+    }
+  }
 };
 
 export const setDifficulty = (level: DifficultyLevel, mode: DifficultyMode = 'dynamic') => {
@@ -687,7 +981,9 @@ const startTimer = () => {
             hintsUsed: gameState().hintsUsed,
             consecutiveCorrect: gameState().consecutiveCorrect,
           });
+          resolveRandomEvent();
           checkAchievements();
+          checkRandomEventAchievements();
           saveCurrentStreak();
           computeGameRating();
         }, 0);
@@ -1151,7 +1447,8 @@ export const useHint = () => {
   if (isHintFrozen()) return;
 
   const clues = currentClues();
-  const lockedClue = clues.find(c => !c.unlocked);
+  const lockedTypes = lockedClueTypes();
+  const lockedClue = clues.find(c => !c.unlocked && !lockedTypes.has(c.type));
   
   if (!lockedClue) return;
 
@@ -1184,7 +1481,8 @@ export const useFreeHint = () => {
   if (isHintFrozen()) return;
 
   const clues = currentClues();
-  const lockedClue = clues.find(c => !c.unlocked);
+  const lockedTypes = lockedClueTypes();
+  const lockedClue = clues.find(c => !c.unlocked && !lockedTypes.has(c.type));
   
   if (!lockedClue) return;
 
@@ -1991,6 +2289,10 @@ export const nextRound = () => {
 
     startTimer();
     saveChapterProgressState();
+    
+    setTimeout(() => {
+      triggerRandomEvent();
+    }, 1000);
   } else {
     let newDifficulty = state.difficultyLevel;
     let adjustmentReason: string | null = null;
@@ -2073,6 +2375,10 @@ export const nextRound = () => {
     }
 
     startTimer();
+    
+    setTimeout(() => {
+      triggerRandomEvent();
+    }, 1000);
   }
 };
 
@@ -2544,6 +2850,10 @@ export const nextThemeRound = () => {
 
   startTimer();
   saveThemeProgressState();
+  
+  setTimeout(() => {
+    triggerRandomEvent();
+  }, 1000);
 };
 
 export const selectBookWithRarity = (bookId: string): boolean => {
@@ -2606,6 +2916,16 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       hintsUsedPerRound: [...state.roundStats.hintsUsedPerRound, state.hintsUsed],
     };
 
+    const activeEvent = state.randomEvent.activeEvent;
+    let eventScoreAdjustment = 0;
+    let eventTimeAdjustment = 0;
+    
+    if (activeEvent) {
+      const impact = calculateRandomEventImpact(activeEvent.event);
+      eventScoreAdjustment = impact.scoreAdjustment;
+      eventTimeAdjustment = impact.timeAdjustment;
+    }
+
     const roundDetail: RoundDetail = {
       level: state.currentLevel,
       targetBookId: book.id,
@@ -2630,6 +2950,14 @@ export const selectBookWithRarity = (bookId: string): boolean => {
         bonusMultiplier: themeFilterResultData.bonusMultiplier,
         layoutAffected: state.themeFilter.layoutAffected,
       },
+      randomEvent: activeEvent ? {
+        eventId: activeEvent.event.id,
+        eventType: activeEvent.event.type,
+        eventTitle: activeEvent.event.title,
+        scoreAdjustment: eventScoreAdjustment,
+        timeAdjustment: eventTimeAdjustment,
+        effects: activeEvent.event.effects,
+      } : undefined,
     };
 
     if (state.currentThemeId) {
@@ -2670,7 +2998,9 @@ export const selectBookWithRarity = (bookId: string): boolean => {
         hintsUsed: state.hintsUsed,
         consecutiveCorrect: gameState().consecutiveCorrect,
       });
+      resolveRandomEvent();
       checkAchievements();
+      checkRandomEventAchievements();
       checkStreakAchievements(newStreakCount);
       computeGameRating();
       updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
@@ -2710,7 +3040,9 @@ export const selectBookWithRarity = (bookId: string): boolean => {
         hintsUsed: gameState().hintsUsed,
         consecutiveCorrect: gameState().consecutiveCorrect,
       });
+      resolveRandomEvent();
       checkAchievements();
+      checkRandomEventAchievements();
       checkStreakAchievements(newStreakCount);
       computeGameRating();
       updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
@@ -2748,7 +3080,9 @@ export const selectBookWithRarity = (bookId: string): boolean => {
         hintsUsed: gameState().hintsUsed,
         consecutiveCorrect: gameState().consecutiveCorrect,
       });
+      resolveRandomEvent();
       checkAchievements();
+      checkRandomEventAchievements();
       checkStreakAchievements(newStreakCount);
       computeGameRating();
       updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
@@ -2907,6 +3241,10 @@ export const nextDailyRound = () => {
   }));
   
   startTimer();
+  
+  setTimeout(() => {
+    triggerRandomEvent();
+  }, 1000);
 };
 
 const completeDailyChallenge = () => {
@@ -3273,6 +3611,10 @@ export const nextRushStage = () => {
   }));
 
   startTimer();
+  
+  setTimeout(() => {
+    triggerRandomEvent();
+  }, 1000);
 };
 
 const completeRushGame = () => {

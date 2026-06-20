@@ -36,6 +36,7 @@ import {
   currentRating,
   collectionCount,
 } from '../store/gameStore';
+import RandomEventDisplay from './RandomEventDisplay';
 import { getGradeInfo } from '../data/rating';
 import Leaderboard from './Leaderboard';
 import BookCollection from './BookCollection';
@@ -1267,6 +1268,8 @@ export default function GameModal() {
           )}
         </div>
       )}
+
+      <RandomEventDisplay />
     </>
   );
 }

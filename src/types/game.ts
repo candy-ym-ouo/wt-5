@@ -365,6 +365,14 @@ export interface RoundDetail {
     bonusMultiplier: number;
     layoutAffected: boolean;
   };
+  randomEvent?: {
+    eventId: string;
+    eventType: RandomEventType;
+    eventTitle: string;
+    scoreAdjustment: number;
+    timeAdjustment: number;
+    effects: RandomEventEffect[];
+  };
 }
 
 export interface GameReplayData {
@@ -476,6 +484,7 @@ export interface GameStore {
   }[];
   themeFilter: ThemeFilterState;
   rush: RushState;
+  randomEvent: RandomEventState;
 }
 
 export interface DailyChallengeBook {
@@ -561,3 +570,81 @@ export interface CollectionEntry {
 }
 
 export type CollectionCategory = 'all' | '文学' | '古典' | '科普' | '技术' | '历史' | '哲学' | '科幻' | '散文' | '童话';
+
+export type RandomEventType = 
+  | 'power_outage' 
+  | 'shelf_rearrange' 
+  | 'hint_failure' 
+  | 'time_warp' 
+  | 'bonus_round'
+  | 'fog_of_war'
+  | 'lucky_find'
+  | 'curse_of_doubt';
+
+export type RandomEventEffectType = 
+  | 'time_penalty' 
+  | 'time_bonus' 
+  | 'score_penalty' 
+  | 'score_boost' 
+  | 'hint_lock' 
+  | 'layout_shuffle' 
+  | 'book_false_highlight' 
+  | 'book_obscure'
+  | 'clue_reveal'
+  | 'clue_hide'
+  | 'score_multiplier'
+  | 'time_multiplier';
+
+export interface RandomEventEffect {
+  type: RandomEventEffectType;
+  value: number;
+  duration?: number;
+  description: string;
+}
+
+export interface RandomEvent {
+  id: string;
+  type: RandomEventType;
+  title: string;
+  description: string;
+  icon: string;
+  effects: RandomEventEffect[];
+  probability: number;
+  minLevel: number;
+  maxLevel: number;
+  difficultyRestriction?: DifficultyLevel[];
+  gameModeRestriction?: GameMode[];
+  positive: boolean;
+}
+
+export interface ActiveRandomEvent {
+  event: RandomEvent;
+  startTime: number;
+  endTime: number;
+  expiresAt?: number;
+  activated: boolean;
+  resolved: boolean;
+  effectsApplied: boolean;
+  roundAffected: number;
+}
+
+export interface RandomEventState {
+  activeEvent: ActiveRandomEvent | null;
+  showEventPopup: boolean;
+  eventHistory: {
+    eventId: string;
+    round: number;
+    timestamp: number;
+    result: 'positive' | 'negative' | 'neutral';
+  }[];
+  eventsTriggeredThisGame: number;
+  eventsSurvived: number;
+  lastEventTriggeredAt: number;
+}
+
+export interface RandomEventResult {
+  event: RandomEvent;
+  scoreAdjustment: number;
+  timeAdjustment: number;
+  messages: string[];
+}

@@ -1,9 +1,23 @@
 import { onMount, onCleanup, createSignal, createEffect, createMemo, For } from 'solid-js';
 import * as PIXI from 'pixi.js';
 import { BOOKS, SHELF_COUNT } from '../data/books';
-import { selectBookWithRarity, gameState, showWrongWarning, lastPenaltyInfo, getWrongPenaltyInfo, getThemeFilterInfo, activateThemeFilter, judgeThemeFilter, currentClues } from '../store/gameStore';
+import { 
+  selectBookWithRarity, 
+  gameState, 
+  showWrongWarning, 
+  lastPenaltyInfo, 
+  getWrongPenaltyInfo, 
+  getThemeFilterInfo, 
+  activateThemeFilter, 
+  judgeThemeFilter, 
+  currentClues,
+  obscuredBookIds,
+  falselyHighlightedBookIds,
+  shuffledBookPositions,
+} from '../store/gameStore';
 import { getThemeById } from '../data/themes';
 import type { Book, PenaltyLevel, ClueType } from '../types/game';
+import { RandomEventActiveIndicator } from './RandomEventDisplay';
 
 export default function Bookshelf() {
   let containerRef: HTMLDivElement | undefined;
@@ -52,6 +66,8 @@ export default function Bookshelf() {
     const eliminatedIds = state.powerUps.eliminatedBookIds;
     const highlightedIds = themeHighlightedBookIds();
     const themeFilterActive = state.themeFilter.active;
+    const obscuredIds = obscuredBookIds();
+    const falseHighlightIds = falselyHighlightedBookIds();
 
     bookSprites.forEach((sprite, bookId) => {
       const book = BOOKS.find(b => b.id === bookId);
@@ -62,9 +78,21 @@ export default function Bookshelf() {
         sprite.tint = 0x888888;
         sprite.interactive = false;
         sprite.buttonMode = false;
+      } else if (obscuredIds.has(bookId)) {
+        sprite.alpha = 0.2;
+        sprite.tint = 0x222222;
+        sprite.interactive = false;
+        sprite.buttonMode = false;
       } else if (peekActive && bookId === targetId) {
         sprite.alpha = 1;
         sprite.tint = 0xffff00;
+        sprite.interactive = true;
+        sprite.buttonMode = true;
+      } else if (falseHighlightIds.has(bookId)) {
+        sprite.alpha = 1;
+        sprite.tint = 0xffd700;
+        sprite.interactive = true;
+        sprite.buttonMode = true;
       } else if (themeFilterActive) {
         if (highlightedIds.has(bookId)) {
           sprite.alpha = 1;
@@ -386,15 +414,52 @@ export default function Bookshelf() {
     }
   });
 
+  createEffect(() => {
+    obscuredBookIds();
+    falselyHighlightedBookIds();
+    shuffledBookPositions();
+    updateBookVisuals();
+  });
+
+  createEffect(() => {
+    const positions = shuffledBookPositions();
+    if (positions && containerRef) {
+      const width = containerRef.clientWidth;
+      const height = containerRef.clientHeight;
+      updateBookshelf(width, height);
+    }
+  });
+
   const themeFilterInfo = createMemo(() => getThemeFilterInfo());
   const isPlaying = createMemo(() => gameState().state === 'playing');
+  
+  const activeRandomEvent = createMemo(() => gameState().randomEvent.activeEvent);
+  const bookshelfClass = createMemo(() => {
+    const classes: string[] = ['bookshelf-section'];
+    if (showWrongWarning()) {
+      classes.push(`penalty-overlay penalty-${showWrongWarning()}`);
+    }
+    if (shakeTrigger() > 0) {
+      classes.push('shake');
+    }
+    if (activeRandomEvent()) {
+      const eventType = activeRandomEvent()!.event.type;
+      if (eventType === 'power_outage') {
+        classes.push('bookshelf-power-outage');
+      } else if (eventType === 'fog_of_war') {
+        classes.push('bookshelf-fog');
+      }
+    }
+    return classes.join(' ');
+  });
 
   return (
     <div 
       ref={containerRef} 
-      class={`bookshelf-section ${showWrongWarning() ? `penalty-overlay penalty-${showWrongWarning()}` : ''} ${shakeTrigger() > 0 ? 'shake' : ''}`}
+      class={bookshelfClass()}
       data-shake={shakeTrigger()}
     >
+      <RandomEventActiveIndicator />
       <div class="theme-filter-panel">
         <div class="theme-filter-header">
           <span class="theme-filter-icon">🎭</span>

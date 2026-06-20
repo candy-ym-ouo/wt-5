@@ -1,7 +1,8 @@
 import { createMemo, createSignal, createEffect } from 'solid-js';
-import { useHint, useFreeHint, useTimePeek, useEliminateWrong, getPeekTimeRemaining, gameState, getDifficultyInfo, isHintFrozen, getHintFreezeRemaining, getWrongPenaltyInfo } from '../store/gameStore';
+import { useHint, useFreeHint, useTimePeek, useEliminateWrong, getPeekTimeRemaining, gameState, getDifficultyInfo, isHintFrozen, getHintFreezeRemaining, getWrongPenaltyInfo, lockedClueTypes } from '../store/gameStore';
 import { getDifficultyConfig } from '../data/difficulty';
 import { POWER_UP_CONFIGS } from '../data/powerUps';
+import { CLUE_TYPE_NAMES } from '../data/clues';
 
 export default function HintSystem() {
   const state = createMemo(() => gameState());
@@ -14,6 +15,7 @@ export default function HintSystem() {
   const diffConfig = createMemo(() => diffInfo().config);
   const isDynamic = createMemo(() => diffInfo().mode === 'dynamic');
   const wrongPenaltyInfo = createMemo(() => getWrongPenaltyInfo());
+  const lockedTypes = createMemo(() => lockedClueTypes());
 
   const powerUps = createMemo(() => state().powerUps);
   const [peekTime, setPeekTime] = createSignal(0);
@@ -89,6 +91,17 @@ export default function HintSystem() {
       <div class="hint-penalty">
         每次提示扣分：{diffConfig().hintPenalty}
       </div>
+
+      {lockedTypes().size > 0 && (
+        <div class="locked-clue-types-info">
+          <div class="locked-clue-title">🔒 以下线索类型暂时失效：</div>
+          <div class="locked-clue-list">
+            {Array.from(lockedTypes()).map(type => (
+              <span class="locked-clue-tag">{CLUE_TYPE_NAMES[type as keyof typeof CLUE_TYPE_NAMES]}</span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {wrongPenaltyInfo().consecutiveWrong > 0 && isPlaying() && (
         <div class={`consecutive-wrong-info penalty-${wrongPenaltyInfo().currentLevel || 'warning'}`}>
