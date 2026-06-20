@@ -89,6 +89,10 @@ import {
   awardCommissionRewards,
 } from './storeManager';
 import {
+  processBookFoundForCalendar,
+  getCalendarIntegration,
+} from './calendarStore';
+import {
   handleChapterComplete,
   getRestoredAreasCount,
   getRestoredSpecialBooksCount,
@@ -2120,9 +2124,13 @@ export const selectBook = (bookId: string): boolean => {
     );
 
     const storeBonus = getStoreBonus();
-    const score = Math.floor(baseScore * storeBonus.scoreMultiplier);
+    const calendarIntegration = getCalendarIntegration();
+    const calendarBonus = calendarIntegration.challengeBonus;
+    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1);
+    const score = Math.floor(baseScore * combinedScoreMultiplier);
 
     processBookFound(book, score);
+    processBookFoundForCalendar(book, score);
 
     const newFoundGenres = [...foundGenres(), book.genre];
     setFoundGenres(newFoundGenres);
@@ -3196,19 +3204,24 @@ export const selectBookWithRarity = (bookId: string): boolean => {
     const baseScoreWithRarity = Math.floor(baseScore * rarityMultiplier);
     
     const storeBonus = getStoreBonus();
+    const calendarIntegration = getCalendarIntegration();
+    const calendarBonus = calendarIntegration.challengeBonus;
     
     const themeFilterResultData = calculateThemeFilterCompensation();
     setThemeFilterResult(themeFilterResultData);
 
     const diffModifier = getThemeFilterDifficultyModifier();
+    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1);
     const scoreAfterThemeFilter = Math.floor(
       (baseScoreWithRarity + themeFilterResultData.compensationScore) *
       themeFilterResultData.bonusMultiplier *
       diffModifier.scoreMultiplier *
-      storeBonus.scoreMultiplier
+      combinedScoreMultiplier
     );
 
-    processBookFound(book, Math.max(scoreAfterThemeFilter, 100));
+    const finalScore = Math.max(scoreAfterThemeFilter, 100);
+    processBookFound(book, finalScore);
+    processBookFoundForCalendar(book, finalScore);
 
     const streakResult = handleStreakOnSuccess(Math.max(scoreAfterThemeFilter, 100));
     const totalScore = streakResult.streakBonus + Math.max(scoreAfterThemeFilter, 100);

@@ -12,9 +12,11 @@ import StreakDisplay from './components/StreakDisplay';
 import TutorialGuide from './components/TutorialGuide';
 import CustomerCommissionPanel from './components/CustomerCommission';
 import CodexCenter from './components/CodexCenter';
+import DailyCalendar from './components/DailyCalendar';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { getCodexStateInfo, openCodex, closeCodex } from './store/codexStore';
+import { getCalendarInfo, openCalendar, closeCalendar, getCalendarIntegration } from './store/calendarStore';
 import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
@@ -48,6 +50,9 @@ export default function App() {
   const coins = createMemo(() => getCoins());
   const storeLevel = createMemo(() => getStoreLevel());
   const codexInfo = createMemo(() => getCodexStateInfo());
+  const calendarInfo = createMemo(() => getCalendarInfo());
+  const calendarIntegration = createMemo(() => getCalendarIntegration());
+  const [showCalendar, setShowCalendar] = createSignal(false);
 
   return (
     <div class="game-container">
@@ -77,6 +82,16 @@ export default function App() {
           {isCommMode() && commInfo().activeCommission && (
             <span class="commission-header-badge">
               🧑‍💼 顾客委托 - {commInfo().activeCommission!.customer.avatar} {commInfo().activeCommission!.customer.name}
+            </span>
+          )}
+          {calendarInfo().festival && (
+            <span class="festival-header-badge">
+              {calendarInfo().festival?.icon} {calendarInfo().festival?.title}
+            </span>
+          )}
+          {calendarIntegration().leaderboardBonus.active && (
+            <span class="calendar-bonus-badge">
+              ⚡ x{calendarIntegration().leaderboardBonus.multiplier.toFixed(2)}
             </span>
           )}
           {!isChapterMode() && !isThemeMode() && !isCommMode() && isPlaying() && (
@@ -170,6 +185,19 @@ export default function App() {
           >
             <div class="stat-label">📖 图鉴</div>
             <div class="stat-value small-stat-value">{codexInfo().stats.collectedBooks}/{codexInfo().stats.totalBooks}</div>
+          </button>
+          <button 
+            class="stat-item calendar-button"
+            onClick={() => {
+              openCalendar();
+              setShowCalendar(true);
+            }}
+            title="每日经营日历"
+          >
+            <div class="stat-label">📆 日历</div>
+            <div class="stat-value small-stat-value">
+              {calendarInfo().unclaimedCount > 0 ? `🎁${calendarInfo().unclaimedCount}` : '查看'}
+            </div>
           </button>
         </div>
       </header>
@@ -436,6 +464,13 @@ export default function App() {
 
       {codexInfo().isVisible && (
         <CodexCenter onClose={closeCodex} />
+      )}
+
+      {showCalendar() && (
+        <DailyCalendar onClose={() => {
+          closeCalendar();
+          setShowCalendar(false);
+        }} />
       )}
 
       {codexInfo().easterEggPopup && state().state !== 'paused' && (
