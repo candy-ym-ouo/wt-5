@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage, RatingResult, RatingInput, RandomEvent, ActiveRandomEvent, RandomEventResult } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage, RatingResult, RatingInput, RandomEvent, ActiveRandomEvent, RandomEventResult, CustomerCommission, CommissionMatchResult, EraPreference, ThemePreference } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, buildClueContent } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -94,6 +94,17 @@ import {
   isStoryStarted,
   isStoryCompleted,
 } from '../utils/storyStorage';
+import {
+  getRandomCustomer,
+  getRandomTheme,
+  getRandomEra,
+  getRandomDescription,
+  getBooksByTheme,
+  getBooksByEra,
+  getEraForYear,
+  calculateCommissionRewards,
+  DIFFICULTY_TIME_MAP,
+} from '../data/commissions';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -193,6 +204,18 @@ const initialStore: GameStore = {
     eventsSurvived: 0,
     lastEventTriggeredAt: 0,
   },
+  commission: {
+    activeCommission: null,
+    completedCommissions: [],
+    totalSatisfaction: 0,
+    totalCommissionsCompleted: 0,
+    totalCommissionsFailed: 0,
+    consecutiveSuccessfulCommissions: 0,
+    bestStreak: 0,
+    commissionQueue: [],
+    showCommissionPopup: false,
+    lastCommissionResult: null,
+  },
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -234,6 +257,8 @@ export const [obscuredBookIds, setObscuredBookIds] = createSignal<Set<string>>(n
 export const [falselyHighlightedBookIds, setFalselyHighlightedBookIds] = createSignal<Set<string>>(new Set());
 export const [hiddenClueIds, setHiddenClueIds] = createSignal<Set<string>>(new Set());
 export const [lockedClueTypes, setLockedClueTypes] = createSignal<Set<string>>(new Set());
+export const [showCommissionResultPopup, setShowCommissionResultPopup] = createSignal(false);
+export const [commissionTimeRemaining, setCommissionTimeRemaining] = createSignal(0);
 
 let timerInterval: number | null = null;
 
@@ -3281,6 +3306,9 @@ export const selectBookWithRarity = (bookId: string): boolean => {
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
+    } else if (state.gameMode === 'commission' as any) {
+      completeCommission(bookId);
+      return true;
     } else if (state.gameMode === 'rush') {
       completeRushStage(bookId, findTime);
 
@@ -4006,3 +4034,492 @@ export const refreshAchievementProgress = () => {
 export const getSafeLeaderboard = () => safeGetLeaderboard();
 
 export const getSafePersonalBest = () => safeGetPersonalBest();
+
+const generateCommissionId = (): string => {
+  return `comm_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+};
+
+const findMatchingBooksForCommission = (
+  theme: ThemePreference,
+  era: EraPreference
+): string[] => {
+  const themeBooks = getBooksByTheme(theme);
+  const eraBooks = era === '任意' ? BOOKS : getBooksByEra(era);
+  
+  const themeBookIds = new Set(themeBooks.map(b => b.id));
+  const eraBookIds = new Set(eraBooks.map(b => b.id));
+  
+  const intersectingIds = [...themeBookIds].filter(id => eraBookIds.has(id));
+  
+  if (intersectingIds.length > 0) {
+    return intersectingIds;
+  }
+  
+  return themeBooks.length > 0 
+    ? themeBooks.map(b => b.id) 
+    : eraBooks.map(b => b.id);
+};
+
+export const generateCommission = (): CustomerCommission => {
+  const customer = getRandomCustomer();
+  const theme = getRandomTheme();
+  const era = getRandomEra();
+  const description = getRandomDescription(theme);
+  const difficulty = gameState().difficultyLevel;
+  const timeLimit = DIFFICULTY_TIME_MAP[difficulty] || 90;
+  const now = Date.now();
+  const targetBookIds = findMatchingBooksForCommission(theme, era);
+  
+  const themeBooks = getBooksByTheme(theme);
+  const genreHint = themeBooks.length > 0 && Math.random() > 0.5 
+    ? themeBooks[Math.floor(Math.random() * themeBooks.length)].genre 
+    : null;
+
+  return {
+    id: generateCommissionId(),
+    customer,
+    vagueDescription: description,
+    eraPreference: era,
+    themePreference: theme,
+    genreHint,
+    timeLimit,
+    startTime: now,
+    endTime: now + timeLimit * 1000,
+    targetBookIds,
+    status: 'pending',
+    satisfaction: 0,
+    matchedBookId: null,
+    matchScore: 0,
+    timeBonus: 0,
+    rewardCoins: 0,
+    rewardReputation: 0,
+  };
+};
+
+export const matchBookToCommission = (
+  bookId: string,
+  commission: CustomerCommission
+): CommissionMatchResult => {
+  const book = BOOKS.find(b => b.id === bookId);
+  if (!book) {
+    return {
+      isMatch: false,
+      matchScore: 0,
+      eraMatch: false,
+      themeMatch: false,
+      genreMatch: false,
+      descriptionMatch: false,
+      matchDetails: '未找到书籍信息',
+      satisfactionDelta: -30,
+    };
+  }
+
+  const bookEra = getEraForYear(book.year);
+  const bookThemes = book.themes;
+  const bookGenre = book.genre;
+
+  const eraMatch = commission.eraPreference === '任意' || bookEra === commission.eraPreference;
+  const themeMatch = bookThemes.includes(commission.themePreference);
+  const genreMatch = !commission.genreHint || bookGenre === commission.genreHint;
+  
+  const descriptionKeywords = extractKeywords(commission.vagueDescription);
+  const descriptionMatch = checkDescriptionMatch(book, descriptionKeywords);
+
+  let matchScore = 0;
+  const details: string[] = [];
+
+  if (eraMatch) {
+    matchScore += 25;
+    details.push(`✓ 年代符合 (${bookEra})`);
+  } else {
+    details.push(`✗ 年代不符 (需要${commission.eraPreference}，实际${bookEra})`);
+  }
+
+  if (themeMatch) {
+    matchScore += 35;
+    details.push(`✓ 主题符合 (${commission.themePreference})`);
+  } else {
+    details.push(`✗ 主题不符 (需要${commission.themePreference})`);
+  }
+
+  if (genreMatch) {
+    matchScore += 20;
+    if (commission.genreHint) {
+      details.push(`✓ 类型符合 (${bookGenre})`);
+    }
+  } else if (commission.genreHint) {
+    details.push(`✗ 类型不符 (需要${commission.genreHint}，实际${bookGenre})`);
+  }
+
+  if (descriptionMatch) {
+    matchScore += 20;
+    details.push(`✓ 描述匹配`);
+  } else {
+    details.push(`○ 描述不太相关`);
+  }
+
+  const isMatch = matchScore >= 60;
+  const satisfactionDelta = isMatch 
+    ? Math.floor((matchScore - 60) * 1.5) + 20 
+    : Math.floor(-(60 - matchScore) * 0.8);
+
+  return {
+    isMatch,
+    matchScore,
+    eraMatch,
+    themeMatch,
+    genreMatch,
+    descriptionMatch,
+    matchDetails: details.join('\n'),
+    satisfactionDelta,
+  };
+};
+
+const extractKeywords = (description: string): string[] => {
+  const keywords: string[] = [];
+  const patterns = [
+    /玛德莱娜|蛋糕|茶|记忆/,
+    /皇帝|罗马|帝王|皇室/,
+    /猴子|西游记|齐天大圣|取经/,
+    /三国|诸葛亮|关羽|曹操|战争/,
+    /荒岛|漂流|孤岛|生存/,
+    /科幻|外星人|宇宙|星球|三体/,
+    /代码|编程|程序|软件|算法/,
+    /哲学|人生|思考|存在|智慧/,
+    /历史|古代|朝代|史记/,
+    /青春|少年|反叛|成长/,
+    /童话|小王子|孩子|星球/,
+    /昆虫|虫子|观察|自然/,
+    /宇宙|时间|黑洞|霍金/,
+    /家族|兴衰|几代人|百年/,
+    /画家|艺术|月亮|六便士/,
+  ];
+  
+  for (const pattern of patterns) {
+    if (pattern.test(description)) {
+      keywords.push(pattern.source);
+    }
+  }
+  
+  return keywords;
+};
+
+const checkDescriptionMatch = (book: Book, keywords: string[]): boolean => {
+  if (keywords.length === 0) return true;
+  
+  const bookText = `${book.title} ${book.description} ${book.backgroundStory} ${book.descriptionClues.join(' ')}`;
+  
+  let matchCount = 0;
+  for (const keyword of keywords) {
+    if (new RegExp(keyword).test(bookText)) {
+      matchCount++;
+    }
+  }
+  
+  return matchCount >= Math.ceil(keywords.length / 2);
+};
+
+export const startCommissionGame = () => {
+  const state = gameState();
+  const diffLevel = state.difficultyLevel;
+  const diffMode = state.difficultyMode;
+  const config = getDifficultyConfig(diffLevel);
+
+  const commission = generateCommission();
+  commission.status = 'active';
+  
+  const targetBook = BOOKS.find(b => commission.targetBookIds.includes(b.id));
+  if (!targetBook) return;
+  
+  setupRound(targetBook);
+  setFoundGenres([]);
+  setGameStartTime(Date.now());
+
+  const newGamesPlayed = incrementGamesPlayed();
+  setGamesPlayed(newGamesPlayed);
+
+  setCommissionTimeRemaining(commission.timeLimit);
+
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    score: 0,
+    timeRemaining: config.gameTime,
+    hintsRemaining: config.initialHints,
+    hintsUsed: 0,
+    currentLevel: 1,
+    targetBookId: targetBook.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    foundBooks: [],
+    consecutiveCorrect: 0,
+    gameMode: 'commission' as any,
+    currentChapterId: null,
+    currentTaskIndex: 0,
+    chapterScore: 0,
+    chapterTimeUsed: 0,
+    chapterHintsUsed: 0,
+    difficultyLevel: diffLevel,
+    difficultyMode: diffMode,
+    difficultyHistory: [diffLevel],
+    roundStats: {
+      findTimes: [],
+      hintsUsedPerRound: [],
+    },
+    roundDetails: [],
+    currentRoundWrongPicks: [],
+    difficultyAdjustmentReason: null,
+    showDifficultyChange: false,
+    lastTimeBonus: 0,
+    powerUps: createInitialPowerUpState(diffLevel),
+    commission: {
+      ...prev.commission,
+      activeCommission: commission,
+      showCommissionPopup: true,
+    },
+  }));
+
+  startCommissionTimer();
+  startTimer();
+};
+
+let commissionTimerInterval: number | null = null;
+
+const startCommissionTimer = () => {
+  if (commissionTimerInterval) clearInterval(commissionTimerInterval);
+  
+  commissionTimerInterval = window.setInterval(() => {
+    const state = gameState();
+    if (state.state !== 'playing' || state.gameMode !== ('commission' as any)) {
+      if (commissionTimerInterval) clearInterval(commissionTimerInterval);
+      return;
+    }
+    
+    setCommissionTimeRemaining(prev => {
+      const newTime = prev - 1;
+      if (newTime <= 0) {
+        if (commissionTimerInterval) clearInterval(commissionTimerInterval);
+        setTimeout(() => failCommission(), 0);
+        return 0;
+      }
+      return newTime;
+    });
+  }, 1000);
+};
+
+export const completeCommission = (bookId: string) => {
+  const state = gameState();
+  const commission = state.commission.activeCommission;
+  if (!commission || commission.status !== 'active') return;
+
+  if (commissionTimerInterval) clearInterval(commissionTimerInterval);
+
+  const matchResult = matchBookToCommission(bookId, commission);
+  const timeRemainingPct = commissionTimeRemaining() / commission.timeLimit;
+  const newStreak = matchResult.isMatch 
+    ? state.commission.consecutiveSuccessfulCommissions + 1 
+    : 0;
+  const bestStreak = Math.max(state.commission.bestStreak, newStreak);
+  
+  const rewards = calculateCommissionRewards(
+    matchResult.matchScore,
+    timeRemainingPct,
+    commission.customer.satisfactionBase,
+    newStreak
+  );
+
+  const satisfaction = Math.max(0, Math.min(100, 
+    commission.customer.satisfactionBase + matchResult.satisfactionDelta
+  ));
+
+  const updatedCommission: CustomerCommission = {
+    ...commission,
+    status: matchResult.isMatch ? 'completed' : 'failed',
+    satisfaction,
+    matchedBookId: bookId,
+    matchScore: matchResult.matchScore,
+    timeBonus: Math.floor(timeRemainingPct * 30),
+    rewardCoins: matchResult.isMatch ? rewards.coins : Math.floor(rewards.coins * 0.2),
+    rewardReputation: matchResult.isMatch ? rewards.reputation : 0,
+  };
+
+  if (matchResult.isMatch) {
+    const bookObj = BOOKS.find(b => b.id === bookId);
+    if (bookObj) {
+      processBookFound(bookObj, satisfaction);
+    }
+  }
+
+  setGameState(prev => ({
+    ...prev,
+    score: prev.score + (matchResult.isMatch ? matchResult.matchScore * 10 : matchResult.matchScore * 2),
+    commission: {
+      ...prev.commission,
+      activeCommission: null,
+      completedCommissions: [
+        ...prev.commission.completedCommissions,
+        updatedCommission,
+      ],
+      totalSatisfaction: prev.commission.totalSatisfaction + satisfaction,
+      totalCommissionsCompleted: matchResult.isMatch 
+        ? prev.commission.totalCommissionsCompleted + 1 
+        : prev.commission.totalCommissionsCompleted,
+      totalCommissionsFailed: matchResult.isMatch 
+        ? prev.commission.totalCommissionsFailed 
+        : prev.commission.totalCommissionsFailed + 1,
+      consecutiveSuccessfulCommissions: newStreak,
+      bestStreak,
+      lastCommissionResult: {
+        success: matchResult.isMatch,
+        satisfaction,
+        rewards: {
+          coins: updatedCommission.rewardCoins,
+          reputation: updatedCommission.rewardReputation,
+        },
+        matchDetails: matchResult.matchDetails,
+      },
+      showCommissionPopup: true,
+    },
+  }));
+
+  setShowCommissionResultPopup(true);
+};
+
+const failCommission = () => {
+  const state = gameState();
+  const commission = state.commission.activeCommission;
+  if (!commission) return;
+
+  const updatedCommission: CustomerCommission = {
+    ...commission,
+    status: 'failed',
+    satisfaction: Math.max(0, commission.customer.satisfactionBase - 40),
+    matchedBookId: null,
+    matchScore: 0,
+    timeBonus: 0,
+    rewardCoins: 0,
+    rewardReputation: 0,
+  };
+
+  setGameState(prev => ({
+    ...prev,
+    state: 'lost',
+    commission: {
+      ...prev.commission,
+      activeCommission: null,
+      completedCommissions: [
+        ...prev.commission.completedCommissions,
+        updatedCommission,
+      ],
+      totalSatisfaction: prev.commission.totalSatisfaction + updatedCommission.satisfaction,
+      totalCommissionsFailed: prev.commission.totalCommissionsFailed + 1,
+      consecutiveSuccessfulCommissions: 0,
+      lastCommissionResult: {
+        success: false,
+        satisfaction: updatedCommission.satisfaction,
+        rewards: { coins: 0, reputation: 0 },
+        matchDetails: '⏰ 时间到！顾客不满意地离开了...',
+      },
+      showCommissionPopup: true,
+    },
+  }));
+
+  setShowCommissionResultPopup(true);
+};
+
+export const acceptNextCommission = () => {
+  setShowCommissionResultPopup(false);
+  const state = gameState();
+  
+  if (state.commission.commissionQueue.length > 0) {
+    const nextCommission = state.commission.commissionQueue[0];
+    const newQueue = state.commission.commissionQueue.slice(1);
+    
+    nextCommission.status = 'active';
+    const targetBook = BOOKS.find(b => nextCommission.targetBookIds.includes(b.id));
+    if (!targetBook) return;
+    
+    setupRound(targetBook);
+    setCommissionTimeRemaining(nextCommission.timeLimit);
+    
+    setGameState(prev => ({
+      ...prev,
+      targetBookId: targetBook.id,
+      unlockedClues: [currentClues()[0]?.id || ''],
+      currentLevel: prev.currentLevel + 1,
+      commission: {
+        ...prev.commission,
+        activeCommission: nextCommission,
+        commissionQueue: newQueue,
+        showCommissionPopup: true,
+      },
+    }));
+    
+    startCommissionTimer();
+  } else {
+    generateAndStartNextCommission();
+  }
+};
+
+const generateAndStartNextCommission = () => {
+  const newCommission = generateCommission();
+  newCommission.status = 'active';
+  
+  const targetBook = BOOKS.find(b => newCommission.targetBookIds.includes(b.id));
+  if (!targetBook) return;
+  
+  setupRound(targetBook);
+  setCommissionTimeRemaining(newCommission.timeLimit);
+  
+  setGameState(prev => ({
+    ...prev,
+    targetBookId: targetBook.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    currentLevel: prev.currentLevel + 1,
+    commission: {
+      ...prev.commission,
+      activeCommission: newCommission,
+      showCommissionPopup: true,
+    },
+  }));
+  
+  startCommissionTimer();
+};
+
+export const getCommissionInfo = () => {
+  const state = gameState();
+  const comm = state.commission.activeCommission;
+  
+  return {
+    activeCommission: comm,
+    timeRemaining: commissionTimeRemaining(),
+    totalSatisfaction: state.commission.totalSatisfaction,
+    totalCompleted: state.commission.totalCommissionsCompleted,
+    totalFailed: state.commission.totalCommissionsFailed,
+    consecutiveSuccess: state.commission.consecutiveSuccessfulCommissions,
+    bestStreak: state.commission.bestStreak,
+    lastResult: state.commission.lastCommissionResult,
+    completedCount: state.commission.completedCommissions.length,
+  };
+};
+
+export const isCommissionMode = (): boolean => {
+  return gameState().gameMode === ('commission' as any);
+};
+
+export const dismissCommissionResultPopup = () => {
+  setShowCommissionResultPopup(false);
+  setGameState(prev => ({
+    ...prev,
+    commission: {
+      ...prev.commission,
+      showCommissionPopup: false,
+    },
+  }));
+};
+
+export const getAverageSatisfaction = (): number => {
+  const state = gameState();
+  const total = state.commission.totalCommissionsCompleted + state.commission.totalCommissionsFailed;
+  if (total === 0) return 0;
+  return Math.round(state.commission.totalSatisfaction / total);
+};

@@ -10,7 +10,8 @@ import BookCollection from './components/BookCollection';
 import ChapterProgress from './components/ChapterProgress';
 import StreakDisplay from './components/StreakDisplay';
 import TutorialGuide from './components/TutorialGuide';
-import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount } from './store/gameStore';
+import CustomerCommissionPanel from './components/CustomerCommission';
+import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
@@ -40,6 +41,8 @@ export default function App() {
   const isDailyMode = createMemo(() => isDailyChallengeMode());
   const rushInfo = createMemo(() => getRushInfo());
   const isRushGameMode = createMemo(() => isRushMode());
+  const isCommMode = createMemo(() => isCommissionMode());
+  const commInfo = createMemo(() => getCommissionInfo());
   const coins = createMemo(() => getCoins());
   const storeLevel = createMemo(() => getStoreLevel());
 
@@ -68,7 +71,12 @@ export default function App() {
               ⚡ 闯关模式 {rushInfo()!.currentStageIndex + 1}/{rushInfo()!.total}
             </span>
           )}
-          {!isChapterMode() && !isThemeMode() && isPlaying() && (
+          {isCommMode() && commInfo().activeCommission && (
+            <span class="commission-header-badge">
+              🧑‍💼 顾客委托 - {commInfo().activeCommission!.customer.avatar} {commInfo().activeCommission!.customer.name}
+            </span>
+          )}
+          {!isChapterMode() && !isThemeMode() && !isCommMode() && isPlaying() && (
             <span class="difficulty-header-badge">
               {diffConfig().icon} {diffConfig().name}
               {isDynamicMode() && <span class="dynamic-indicator">🔄</span>}
@@ -302,6 +310,10 @@ export default function App() {
                 )}
               </div>
             </div>
+          )}
+
+          {isCommMode() && (
+            <CustomerCommissionPanel />
           )}
 
           <div class="sidebar-section">

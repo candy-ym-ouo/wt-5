@@ -485,6 +485,7 @@ export interface GameStore {
   themeFilter: ThemeFilterState;
   rush: RushState;
   randomEvent: RandomEventState;
+  commission: CommissionState;
 }
 
 export interface DailyChallengeBook {
@@ -676,4 +677,64 @@ export interface SmartBookSelectionResult {
   selectionReason: string;
   familiarityLevel: FamiliarityLevel;
   isNewGenre: boolean;
+}
+
+export type EraPreference = '古代' | '近代' | '现代' | '当代' | '任意';
+export type ThemePreference = string;
+
+export interface Customer {
+  id: string;
+  name: string;
+  avatar: string;
+  personality: string;
+  satisfactionBase: number;
+}
+
+export interface CustomerCommission {
+  id: string;
+  customer: Customer;
+  vagueDescription: string;
+  eraPreference: EraPreference;
+  themePreference: ThemePreference;
+  genreHint: string | null;
+  timeLimit: number;
+  startTime: number;
+  endTime: number;
+  targetBookIds: string[];
+  status: 'pending' | 'active' | 'completed' | 'failed';
+  satisfaction: number;
+  matchedBookId: string | null;
+  matchScore: number;
+  timeBonus: number;
+  rewardCoins: number;
+  rewardReputation: number;
+}
+
+export interface CommissionState {
+  activeCommission: CustomerCommission | null;
+  completedCommissions: CustomerCommission[];
+  totalSatisfaction: number;
+  totalCommissionsCompleted: number;
+  totalCommissionsFailed: number;
+  consecutiveSuccessfulCommissions: number;
+  bestStreak: number;
+  commissionQueue: CustomerCommission[];
+  showCommissionPopup: boolean;
+  lastCommissionResult: {
+    success: boolean;
+    satisfaction: number;
+    rewards: { coins: number; reputation: number };
+    matchDetails: string;
+  } | null;
+}
+
+export interface CommissionMatchResult {
+  isMatch: boolean;
+  matchScore: number;
+  eraMatch: boolean;
+  themeMatch: boolean;
+  genreMatch: boolean;
+  descriptionMatch: boolean;
+  matchDetails: string;
+  satisfactionDelta: number;
 }

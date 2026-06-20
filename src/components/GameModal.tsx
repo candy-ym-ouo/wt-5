@@ -35,6 +35,10 @@ import {
   lastRushTimeBonus,
   currentRating,
   collectionCount,
+  startCommissionGame,
+  isCommissionMode,
+  getCommissionInfo,
+  getAverageSatisfaction,
 } from '../store/gameStore';
 import RandomEventDisplay from './RandomEventDisplay';
 import { getGradeInfo } from '../data/rating';
@@ -102,6 +106,10 @@ export default function GameModal() {
     const r = rating();
     return r ? getGradeInfo(r.grade) : null;
   });
+  // Commission mode (used in buttons) - keep references for future use
+  void isCommissionMode;
+  void getCommissionInfo;
+  void getAverageSatisfaction;
 
   const handleSelectDifficulty = (level: DifficultyLevel) => {
     setSelectedDifficulty(level);
@@ -133,6 +141,11 @@ export default function GameModal() {
 
   const handleStartRushGame = () => {
     startRushGame(selectedDifficulty(), difficultyMode());
+    setShowDifficultySelect(false);
+  };
+
+  const handleStartCommissionGame = () => {
+    startCommissionGame();
     setShowDifficultySelect(false);
   };
 
@@ -226,6 +239,9 @@ export default function GameModal() {
               </button>
               <button class="modal-button rush-btn" onClick={handleStartRushGame}>
                 ⚡ 闯关模式
+              </button>
+              <button class="modal-button commission-btn" onClick={handleStartCommissionGame}>
+                🧑‍💼 顾客委托
               </button>
             </div>
 
@@ -400,6 +416,9 @@ export default function GameModal() {
               )}
               <button class="modal-button rush-start-button" onClick={handleStartRushGame}>
                 ⚡ 开始闯关模式
+              </button>
+              <button class="modal-button commission-start-button" onClick={handleStartCommissionGame}>
+                🧑‍💼 开始顾客委托
               </button>
             </div>
           </div>
