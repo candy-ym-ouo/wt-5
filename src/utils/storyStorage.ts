@@ -1,5 +1,6 @@
 import type { StorySave, BookshelfAreaStatus, DialogueHistoryEntry } from '../types/story';
-import { BOOKSHELF_AREAS } from '../data/story';
+import { BOOKSHELF_AREAS, getSpecialBookById } from '../data/story';
+import { getChapterProgress } from './storage';
 
 export const STORY_SAVE_KEY = 'old_bookstore_story_save';
 
@@ -133,4 +134,119 @@ export const getRestoredSpecialBooksCount = (): number => {
 export const getAreaStatus = (areaId: string): BookshelfAreaStatus => {
   const save = getStorySave();
   return save.areasStatus[areaId] || 'locked';
+};
+
+export const getAreaByChapterId = (chapterId: string) => {
+  return BOOKSHELF_AREAS.find(a => a.relatedChapterId === chapterId);
+};
+
+export const unlockArea = (areaId: string): StorySave => {
+  const save = getStorySave();
+  if (save.areasStatus[areaId] === 'locked') {
+    save.areasStatus[areaId] = 'damaged';
+    saveStorySave(save);
+  }
+  return save;
+};
+
+export interface ChapterCompleteResult {
+  areaRestored: boolean;
+  restoredAreaId: string | null;
+  unlockedAreas: string[];
+  unlockedSpecialBooks: string[];
+  newRelationships: Record<string, number>;
+  coinsEarned: number;
+  scoreBonus: number;
+}
+
+export const handleChapterComplete = (chapterId: string): ChapterCompleteResult => {
+  const result: ChapterCompleteResult = {
+    areaRestored: false,
+    restoredAreaId: null,
+    unlockedAreas: [],
+    unlockedSpecialBooks: [],
+    newRelationships: {},
+    coinsEarned: 0,
+    scoreBonus: 0,
+  };
+
+  if (!isStoryStarted()) {
+    return result;
+  }
+
+  const area = getAreaByChapterId(chapterId);
+  if (!area) {
+    return result;
+  }
+
+  const save = getStorySave();
+  const currentStatus = save.areasStatus[area.id];
+
+  if (currentStatus === 'locked') {
+    unlockArea(area.id);
+    result.unlockedAreas.push(area.id);
+  }
+
+  const chapterProgress = getChapterProgress(chapterId);
+  if (!chapterProgress?.completedAt) {
+    return result;
+  }
+
+  const updatedStatus = getStorySave().areasStatus[area.id];
+  if (updatedStatus === 'restored') {
+    return result;
+  }
+
+  result.areaRestored = true;
+  result.restoredAreaId = area.id;
+
+  const newSave = updateAreaStatus(area.id, 'restored');
+
+  for (const reward of area.restorationRewards) {
+    switch (reward.type) {
+      case 'unlock_area':
+        if (reward.value) {
+          const areaId = reward.value as string;
+          unlockArea(areaId);
+          result.unlockedAreas.push(areaId);
+        }
+        break;
+      case 'special_book':
+        if (reward.value) {
+          const bookId = reward.value as string;
+          if (!newSave.restoredSpecialBooks.includes(bookId)) {
+            markSpecialBookRestored(bookId);
+            result.unlockedSpecialBooks.push(bookId);
+          }
+        }
+        break;
+      case 'coins':
+        result.coinsEarned += (reward.value as number) || 0;
+        break;
+      case 'score_bonus':
+        result.scoreBonus += (reward.value as number) || 0;
+        break;
+      case 'relationship':
+        if (reward.targetId) {
+          const delta = (reward.value as number) || 0;
+          updateCharacterRelationship(reward.targetId, delta);
+          result.newRelationships[reward.targetId] = (newSave.characterRelationships[reward.targetId] || 0) + delta;
+        }
+        break;
+    }
+  }
+
+  for (const bookId of area.specialBookIds) {
+    const book = getSpecialBookById(bookId);
+    if (book && book.unlockCondition.type === 'complete_area' && book.unlockCondition.areaId === area.id) {
+      if (!getStorySave().restoredSpecialBooks.includes(bookId)) {
+        markSpecialBookRestored(bookId);
+        if (!result.unlockedSpecialBooks.includes(bookId)) {
+          result.unlockedSpecialBooks.push(bookId);
+        }
+      }
+    }
+  }
+
+  return result;
 };

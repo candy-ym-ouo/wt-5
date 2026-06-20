@@ -18,7 +18,9 @@ import {
   getSpecialBooksForArea,
   refreshStoryState,
   getStorySettlement,
+  checkSettlementAchievements,
 } from '../store/storyStore';
+import { showStoryAchievementPopup } from '../store/gameStore';
 import { getChapterProgress } from '../utils/storage';
 import { isStoryStarted, isStoryCompleted, getRestoredAreasCount, getRestoredSpecialBooksCount } from '../utils/storyStorage';
 
@@ -499,6 +501,14 @@ export default function StoryMode(props: StoryModeProps) {
           {(() => {
             const settlement = getStorySettlement();
             const rating = settlement.storyRating;
+            
+            if (rating.grade === 'S') {
+              const sRankAch = checkSettlementAchievements();
+              if (sRankAch) {
+                setTimeout(() => showStoryAchievementPopup(sRankAch), 500);
+              }
+            }
+            
             return (
               <div class="story-settlement">
                 <div class="settlement-title">🎊 旧书店修复完成</div>

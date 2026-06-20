@@ -73,9 +73,10 @@ export interface BookshelfArea {
 }
 
 export interface AreaReward {
-  type: 'coins' | 'score_bonus' | 'hint_bonus' | 'special_book' | 'unlock_area';
+  type: 'coins' | 'score_bonus' | 'hint_bonus' | 'special_book' | 'unlock_area' | 'relationship';
   value: number | string;
   description: string;
+  targetId?: string;
 }
 
 export interface SpecialBook {

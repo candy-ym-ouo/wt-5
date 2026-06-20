@@ -87,6 +87,13 @@ import {
   getTimeBonus,
   getHintBonus,
 } from './storeManager';
+import {
+  handleChapterComplete,
+  getRestoredAreasCount,
+  getRestoredSpecialBooksCount,
+  isStoryStarted,
+  isStoryCompleted,
+} from '../utils/storyStorage';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -959,6 +966,69 @@ export const checkAchievements = () => {
   }
 };
 
+export const checkStoryAchievements = (): string | null => {
+  const state = gameState();
+  const unlocked = [...state.unlockedAchievements];
+  let newAchievement: string | null = null;
+
+  if (isStoryStarted() && !unlocked.includes('story_starter')) {
+    if (unlockSingleAchievement('story_starter')) {
+      newAchievement = 'story_starter';
+    }
+  }
+
+  const restoredCount = getRestoredAreasCount();
+  if (restoredCount >= 1 && !unlocked.includes('story_first_restore')) {
+    if (unlockSingleAchievement('story_first_restore')) {
+      if (!newAchievement) newAchievement = 'story_first_restore';
+    }
+  }
+
+  const restorerResult = updateProgressiveAchievement('story_restorer', restoredCount);
+  if (restorerResult.newStages.length > 0 && !newAchievement) {
+    newAchievement = 'story_restorer';
+  }
+
+  const booksCount = getRestoredSpecialBooksCount();
+  const booksResult = updateProgressiveAchievement('story_special_book', booksCount);
+  if (booksResult.newStages.length > 0 && !newAchievement) {
+    newAchievement = 'story_special_book';
+  }
+
+  if (isStoryCompleted() && !unlocked.includes('story_completed')) {
+    if (unlockSingleAchievement('story_completed')) {
+      if (!newAchievement) newAchievement = 'story_completed';
+    }
+  }
+
+  return newAchievement;
+};
+
+export const showStoryAchievementPopup = (achievementId: string | null) => {
+  if (!achievementId) return;
+  const ach = ACHIEVEMENTS.find(a => a.id === achievementId);
+  if (ach) {
+    setShowAchievementPopup(ach.title);
+    setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
+  }
+};
+
+export const updateStoryDialogueAchievement = (dialogueCount: number): string | null => {
+  const result = updateProgressiveAchievement('story_dialogue_master', dialogueCount);
+  if (result.newStages.length > 0) {
+    return 'story_dialogue_master';
+  }
+  return null;
+};
+
+export const unlockStorySRankAchievement = (): boolean => {
+  const state = gameState();
+  if (state.unlockedAchievements.includes('story_s_rank')) {
+    return false;
+  }
+  return unlockSingleAchievement('story_s_rank');
+};
+
 const isAchievementBookRelated = (achievementId: string, bookId: string): boolean => {
   const book = BOOKS.find(b => b.id === bookId);
   if (!book) return false;
@@ -1793,6 +1863,40 @@ const completeChapter = () => {
   if (allCompleted && !state.unlockedAchievements.includes('all_chapters')) {
     if (unlockSingleAchievement('all_chapters')) {
       if (!newAchievement) newAchievement = 'all_chapters';
+    }
+  }
+
+  const storyResult = handleChapterComplete(state.currentChapterId!);
+
+  if (storyResult.areaRestored || storyResult.unlockedAreas.length > 0 || storyResult.unlockedSpecialBooks.length > 0) {
+    if (!state.unlockedAchievements.includes('story_starter') && isStoryStarted()) {
+      if (unlockSingleAchievement('story_starter')) {
+        if (!newAchievement) newAchievement = 'story_starter';
+      }
+    }
+
+    const restoredCount = getRestoredAreasCount();
+    if (restoredCount >= 1 && !state.unlockedAchievements.includes('story_first_restore')) {
+      if (unlockSingleAchievement('story_first_restore')) {
+        if (!newAchievement) newAchievement = 'story_first_restore';
+      }
+    }
+
+    const restorerResult = updateProgressiveAchievement('story_restorer', restoredCount);
+    if (restorerResult.newStages.length > 0 && !newAchievement) {
+      newAchievement = 'story_restorer';
+    }
+
+    const booksCount = getRestoredSpecialBooksCount();
+    const booksResult = updateProgressiveAchievement('story_special_book', booksCount);
+    if (booksResult.newStages.length > 0 && !newAchievement) {
+      newAchievement = 'story_special_book';
+    }
+
+    if (isStoryCompleted() && !state.unlockedAchievements.includes('story_completed')) {
+      if (unlockSingleAchievement('story_completed')) {
+        if (!newAchievement) newAchievement = 'story_completed';
+      }
     }
   }
 

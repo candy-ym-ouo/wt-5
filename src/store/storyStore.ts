@@ -11,6 +11,7 @@ import {
   updateCharacterRelationship,
   startStory as startStoryStorage,
 } from '../utils/storyStorage';
+import { checkStoryAchievements, showStoryAchievementPopup, updateStoryDialogueAchievement, unlockStorySRankAchievement } from './gameStore';
 
 const createInitialState = (): StoryState => {
   const save = getStorySave();
@@ -44,6 +45,11 @@ export const startStory = () => {
     showStoryNarration: true,
     currentNarrationText: STORY_CHAPTERS[0].introNarration,
   }));
+  
+  const newAch = checkStoryAchievements();
+  if (newAch) {
+    setTimeout(() => showStoryAchievementPopup(newAch), 800);
+  }
 };
 
 export const selectArea = (areaId: string) => {
@@ -173,6 +179,13 @@ export const completeDialogue = () => {
   
   refreshStoryState();
   
+  const newSave = getStorySave();
+  const dialogueCount = newSave.dialogueHistory.length;
+  const dialogueAchievement = updateStoryDialogueAchievement(dialogueCount);
+  if (dialogueAchievement) {
+    setTimeout(() => showStoryAchievementPopup(dialogueAchievement), 500);
+  }
+  
   setStoryState(prev => ({
     ...prev,
     activeDialogue: null,
@@ -203,6 +216,11 @@ export const restoreArea = (areaId: string) => {
   }
   
   refreshStoryState();
+  
+  const newAch = checkStoryAchievements();
+  if (newAch) {
+    setTimeout(() => showStoryAchievementPopup(newAch), 600);
+  }
 };
 
 export const checkAreaRestoration = (areaId: string): boolean => {
@@ -282,6 +300,16 @@ export const getStorySettlement = (): StorySettlement => {
     completionTime: save.completedAt ? save.completedAt - save.startedAt : 0,
     storyRating: rating,
   };
+};
+
+export const checkSettlementAchievements = (): string | null => {
+  const settlement = getStorySettlement();
+  if (settlement.storyRating.grade === 'S') {
+    if (unlockStorySRankAchievement()) {
+      return 'story_s_rank';
+    }
+  }
+  return null;
 };
 
 export const getAvailableAreas = () => {
