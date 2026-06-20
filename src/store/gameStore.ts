@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage, RatingResult, RatingInput } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, buildClueContent } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -60,6 +60,7 @@ import {
   STREAK_INHERIT_COST,
 } from '../data/streaks';
 import { generateDailyChallenge, getTodayDateKey, getDailyChallengeBooks } from '../data/dailyChallenge';
+import { calculateRating } from '../data/rating';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -183,6 +184,7 @@ export const [showDailyCompletePopup, setShowDailyCompletePopup] = createSignal(
 export const [lastRushStageBonus, setLastRushStageBonus] = createSignal(0);
 export const [lastRushTimeBonus, setLastRushTimeBonus] = createSignal(0);
 export const [showRushCompletePopup, setShowRushCompletePopup] = createSignal(false);
+export const [currentRating, setCurrentRating] = createSignal<RatingResult | null>(null);
 
 let timerInterval: number | null = null;
 
@@ -629,6 +631,7 @@ const startTimer = () => {
           });
           checkAchievements();
           saveCurrentStreak();
+          computeGameRating();
         }, 0);
         return { ...prev, timeRemaining: 0, state: 'lost' };
       }
@@ -1619,6 +1622,7 @@ export const selectBook = (bookId: string): boolean => {
         });
         checkAchievements();
         checkStreakAchievements(newStreakCount);
+        computeGameRating();
 
         if (nextTaskIndex >= tasks.length) {
           setTimeout(completeChapter, 500);
@@ -1656,6 +1660,7 @@ export const selectBook = (bookId: string): boolean => {
       });
       checkAchievements();
       checkStreakAchievements(newStreakCount);
+      computeGameRating();
     }
     return true;
   } else {
@@ -2074,6 +2079,58 @@ export const resumeGame = () => {
   savedPeekEndTime = 0;
 };
 
+export const computeGameRating = (): RatingResult | null => {
+  const state = gameState();
+  const config = getDifficultyConfig(state.difficultyLevel);
+  const findTimes = state.roundStats.findTimes;
+  const totalTimeUsed = findTimes.length > 0
+    ? findTimes.reduce((a, b) => a + b, 0)
+    : (config.gameTime - state.timeRemaining);
+  const avgFindTime = findTimes.length > 0
+    ? findTimes.reduce((a, b) => a + b, 0) / findTimes.length
+    : 0;
+  const totalWrongPicks = state.wrongPenalty.penaltyHistory.length;
+
+  const completed = state.state === 'won' || state.state === 'chapter_complete';
+
+  if (state.foundBooks.length === 0 && state.state !== 'lost') {
+    return null;
+  }
+
+  const ratingInput: RatingInput = {
+    totalTimeUsed,
+    totalGameTime: config.gameTime,
+    avgFindTime,
+    totalHintsUsed: state.hintsUsed,
+    totalBooksFound: state.foundBooks.length,
+    totalWrongPicks,
+    bestStreak: state.streak.bestStreak,
+    currentStreak: state.streak.currentStreak,
+    difficultyLevel: state.difficultyLevel,
+    completed,
+  };
+
+  const rating = calculateRating(ratingInput);
+  setCurrentRating(rating);
+
+  if (rating.bonusScore > 0) {
+    if (state.gameMode === 'chapter') {
+      setGameState(prev => ({
+        ...prev,
+        score: prev.score + rating.bonusScore,
+        chapterScore: prev.chapterScore + rating.bonusScore,
+      }));
+    } else {
+      setGameState(prev => ({
+        ...prev,
+        score: prev.score + rating.bonusScore,
+      }));
+    }
+  }
+
+  return rating;
+};
+
 export const resetGame = () => {
   if (timerInterval) clearInterval(timerInterval);
   if (peekInterval) {
@@ -2085,6 +2142,7 @@ export const resetGame = () => {
   setShowThemeRewardPopup(null);
   setShowDailyCompletePopup(false);
   setShowRushCompletePopup(false);
+  setCurrentRating(null);
   setGameState(prev => ({ ...prev, showDifficultyChange: false }));
   setGameState(initialStore);
   setCurrentClues([]);
@@ -2552,6 +2610,7 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       });
       checkAchievements();
       checkStreakAchievements(newStreakCount);
+      computeGameRating();
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
@@ -2589,6 +2648,7 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       });
       checkAchievements();
       checkStreakAchievements(newStreakCount);
+      computeGameRating();
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
@@ -2624,6 +2684,7 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       });
       checkAchievements();
       checkStreakAchievements(newStreakCount);
+      computeGameRating();
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
@@ -2816,6 +2877,7 @@ const completeDailyChallenge = () => {
     consecutiveCorrect: state.consecutiveCorrect,
   });
   checkAchievements();
+  computeGameRating();
 };
 
 export const getDailyChallengeInfo = () => {
@@ -3166,6 +3228,7 @@ const completeRushGame = () => {
   });
   checkAchievements();
   checkStreakAchievements(state.streak.currentStreak + 1);
+  computeGameRating();
 };
 
 export const getRushInfo = () => {

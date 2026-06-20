@@ -33,7 +33,9 @@ import {
   restartRushGame,
   lastRushStageBonus,
   lastRushTimeBonus,
+  currentRating,
 } from '../store/gameStore';
+import { getGradeInfo } from '../data/rating';
 import Leaderboard from './Leaderboard';
 import ChapterSelect from './ChapterSelect';
 import ThemeSelect from './ThemeSelect';
@@ -89,6 +91,11 @@ export default function GameModal() {
   const rushInfo = createMemo(() => getRushInfo());
   const lastStageBonus = createMemo(() => lastRushStageBonus());
   const lastStageTimeBonus = createMemo(() => lastRushTimeBonus());
+  const rating = createMemo(() => currentRating());
+  const gradeInfo = createMemo(() => {
+    const r = rating();
+    return r ? getGradeInfo(r.grade) : null;
+  });
 
   const handleSelectDifficulty = (level: DifficultyLevel) => {
     setSelectedDifficulty(level);
@@ -479,6 +486,80 @@ export default function GameModal() {
 
             <div class="score-big">+{state().score} 分</div>
 
+            {rating() && gradeInfo() && (
+              <div class="rating-section">
+                <div class="rating-main">
+                  <div class="rating-grade-badge" style={{ color: gradeInfo()!.color }}>
+                    <span class="rating-grade-icon">{gradeInfo()!.icon}</span>
+                    <span class="rating-grade-text">{rating()!.grade}</span>
+                  </div>
+                  <div class="rating-info">
+                    <div class="rating-title" style={{ color: gradeInfo()!.color }}>
+                      {rating()!.title}
+                    </div>
+                    <div class="rating-score">综合评分：{rating()!.score}/100</div>
+                  </div>
+                </div>
+                <div class="rating-description">{rating()!.description}</div>
+
+                <div class="rating-breakdown">
+                  <div class="rating-breakdown-title">评分明细</div>
+                  <div class="rating-breakdown-grid">
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">⏱️</span>
+                      <span class="rb-label">用时</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.timeScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.timeScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">💡</span>
+                      <span class="rb-label">提示使用</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.hintScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.hintScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">🎯</span>
+                      <span class="rb-label">准确率</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.accuracyScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.accuracyScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">🔥</span>
+                      <span class="rb-label">连胜</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.streakScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.streakScore}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rating-feedback">
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.time}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.hints}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.accuracy}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.streak}</div>
+                </div>
+
+                <div class="rating-reward">
+                  <div class="rating-reward-title">评级奖励</div>
+                  <div class="rating-reward-badge">
+                    <span class="rr-multiplier">x{rating()!.rewardMultiplier}</span>
+                    <span class="rr-label">奖励倍率</span>
+                  </div>
+                  <div class="rating-reward-bonus">
+                    额外奖励 +{rating()!.bonusScore} 分
+                  </div>
+                </div>
+              </div>
+            )}
+
             {!isChapterMode() && state().score > 0 && (
               <div class="settlement-ranking">
                 {(personalBestFlags().score || personalBestFlags().weekly || personalBestFlags().season) && (
@@ -722,6 +803,80 @@ export default function GameModal() {
               ⭐ 通关奖励 +{chapter()?.bonusScore} 分
             </div>
 
+            {rating() && gradeInfo() && (
+              <div class="rating-section">
+                <div class="rating-main">
+                  <div class="rating-grade-badge" style={{ color: gradeInfo()!.color }}>
+                    <span class="rating-grade-icon">{gradeInfo()!.icon}</span>
+                    <span class="rating-grade-text">{rating()!.grade}</span>
+                  </div>
+                  <div class="rating-info">
+                    <div class="rating-title" style={{ color: gradeInfo()!.color }}>
+                      {rating()!.title}
+                    </div>
+                    <div class="rating-score">综合评分：{rating()!.score}/100</div>
+                  </div>
+                </div>
+                <div class="rating-description">{rating()!.description}</div>
+
+                <div class="rating-breakdown">
+                  <div class="rating-breakdown-title">评分明细</div>
+                  <div class="rating-breakdown-grid">
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">⏱️</span>
+                      <span class="rb-label">用时</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.timeScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.timeScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">💡</span>
+                      <span class="rb-label">提示使用</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.hintScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.hintScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">🎯</span>
+                      <span class="rb-label">准确率</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.accuracyScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.accuracyScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">🔥</span>
+                      <span class="rb-label">连胜</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.streakScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.streakScore}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rating-feedback">
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.time}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.hints}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.accuracy}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.streak}</div>
+                </div>
+
+                <div class="rating-reward">
+                  <div class="rating-reward-title">评级奖励</div>
+                  <div class="rating-reward-badge">
+                    <span class="rr-multiplier">x{rating()!.rewardMultiplier}</span>
+                    <span class="rr-label">奖励倍率</span>
+                  </div>
+                  <div class="rating-reward-bonus">
+                    额外奖励 +{rating()!.bonusScore} 分
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div class="game-stats">
               <div class="game-stat">
                 <div class="game-stat-value">{tasks().length}</div>
@@ -784,6 +939,80 @@ export default function GameModal() {
             )}
             
             <div class="score-big">{state().score} 分</div>
+
+            {rating() && gradeInfo() && (
+              <div class="rating-section">
+                <div class="rating-main">
+                  <div class="rating-grade-badge" style={{ color: gradeInfo()!.color }}>
+                    <span class="rating-grade-icon">{gradeInfo()!.icon}</span>
+                    <span class="rating-grade-text">{rating()!.grade}</span>
+                  </div>
+                  <div class="rating-info">
+                    <div class="rating-title" style={{ color: gradeInfo()!.color }}>
+                      {rating()!.title}
+                    </div>
+                    <div class="rating-score">综合评分：{rating()!.score}/100</div>
+                  </div>
+                </div>
+                <div class="rating-description">{rating()!.description}</div>
+
+                <div class="rating-breakdown">
+                  <div class="rating-breakdown-title">评分明细</div>
+                  <div class="rating-breakdown-grid">
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">⏱️</span>
+                      <span class="rb-label">用时</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.timeScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.timeScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">💡</span>
+                      <span class="rb-label">提示使用</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.hintScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.hintScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">🎯</span>
+                      <span class="rb-label">准确率</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.accuracyScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.accuracyScore}</span>
+                    </div>
+                    <div class="rating-breakdown-item">
+                      <span class="rb-icon">🔥</span>
+                      <span class="rb-label">连胜</span>
+                      <div class="rb-bar-container">
+                        <div class="rb-bar-fill" style={{ width: `${rating()!.breakdown.streakScore}%` }} />
+                      </div>
+                      <span class="rb-score">{rating()!.breakdown.streakScore}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rating-feedback">
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.time}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.hints}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.accuracy}</div>
+                  <div class="rating-feedback-item">{rating()!.detailedFeedback.streak}</div>
+                </div>
+
+                <div class="rating-reward">
+                  <div class="rating-reward-title">评级奖励</div>
+                  <div class="rating-reward-badge">
+                    <span class="rr-multiplier">x{rating()!.rewardMultiplier}</span>
+                    <span class="rr-label">奖励倍率</span>
+                  </div>
+                  <div class="rating-reward-bonus">
+                    额外奖励 +{rating()!.bonusScore} 分
+                  </div>
+                </div>
+              </div>
+            )}
 
             {!isChapterMode() && state().score > 0 && (
               <div class="settlement-ranking">

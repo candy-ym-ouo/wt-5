@@ -507,3 +507,42 @@ export interface DailyChallengeProgress {
   attempts: number;
   completed: boolean;
 }
+
+export type RatingGrade = 'S+' | 'S' | 'A' | 'B' | 'C' | 'D';
+
+export interface RatingScoreBreakdown {
+  timeScore: number;
+  hintScore: number;
+  accuracyScore: number;
+  streakScore: number;
+  totalScore: number;
+}
+
+export interface RatingResult {
+  grade: RatingGrade;
+  score: number;
+  breakdown: RatingScoreBreakdown;
+  title: string;
+  description: string;
+  detailedFeedback: {
+    time: string;
+    hints: string;
+    accuracy: string;
+    streak: string;
+  };
+  rewardMultiplier: number;
+  bonusScore: number;
+}
+
+export interface RatingInput {
+  totalTimeUsed: number;
+  totalGameTime: number;
+  avgFindTime: number;
+  totalHintsUsed: number;
+  totalBooksFound: number;
+  totalWrongPicks: number;
+  bestStreak: number;
+  currentStreak: number;
+  difficultyLevel: DifficultyLevel;
+  completed: boolean;
+}
