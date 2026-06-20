@@ -9,6 +9,7 @@ import Leaderboard from './components/Leaderboard';
 import BookCollection from './components/BookCollection';
 import ChapterProgress from './components/ChapterProgress';
 import StreakDisplay from './components/StreakDisplay';
+import TutorialGuide from './components/TutorialGuide';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount } from './store/gameStore';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
@@ -353,6 +354,8 @@ export default function App() {
       {showCollection() && (
         <BookCollection onClose={() => setShowCollection(false)} />
       )}
+
+      <TutorialGuide onClose={() => {}} />
     </div>
   );
 }

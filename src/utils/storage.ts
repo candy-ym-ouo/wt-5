@@ -21,6 +21,8 @@ export const DAILY_CHALLENGE_PROGRESS_KEY = 'old_bookstore_daily_progress';
 export const COLLECTION_KEY = 'old_bookstore_collection';
 export const SEEN_EVENT_TYPES_KEY = 'old_bookstore_seen_event_types';
 export const TOTAL_EVENTS_TRIGGERED_KEY = 'old_bookstore_total_events_triggered';
+export const TUTORIAL_COMPLETED_KEY = 'old_bookstore_tutorial_completed';
+export const TUTORIAL_STEP_KEY = 'old_bookstore_tutorial_step';
 
 const CURRENT_STORAGE_VERSION = 4;
 
@@ -897,4 +899,41 @@ export function getTotalEventsTriggered(): number {
 export function incrementTotalEventsTriggered(count: number): void {
   const current = getTotalEventsTriggered();
   localStorage.setItem(TOTAL_EVENTS_TRIGGERED_KEY, String(current + count));
+}
+
+export function hasCompletedTutorial(): boolean {
+  try {
+    const data = localStorage.getItem(TUTORIAL_COMPLETED_KEY);
+    return data === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function markTutorialCompleted(): void {
+  try {
+    localStorage.setItem(TUTORIAL_COMPLETED_KEY, 'true');
+  } catch {}
+}
+
+export function getTutorialCurrentStep(): number {
+  try {
+    const data = localStorage.getItem(TUTORIAL_STEP_KEY);
+    return data ? parseInt(data, 10) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveTutorialStep(step: number): void {
+  try {
+    localStorage.setItem(TUTORIAL_STEP_KEY, String(step));
+  } catch {}
+}
+
+export function resetTutorial(): void {
+  try {
+    localStorage.removeItem(TUTORIAL_COMPLETED_KEY);
+    localStorage.removeItem(TUTORIAL_STEP_KEY);
+  } catch {}
 }
