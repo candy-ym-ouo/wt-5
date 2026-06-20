@@ -7,6 +7,8 @@ import { getChapterById, getNextChapter } from '../data/chapters';
 import {
   getDifficultyConfig,
   selectSmartTargetBook,
+  selectSmartBookByTheme,
+  generateSmartDailyChallenge,
   adjustDifficulty,
   calculateScoreWithDifficulty,
   getRecentBookGenresFromHistory,
@@ -59,7 +61,7 @@ import {
   getTotalEventsTriggered,
   incrementTotalEventsTriggered,
 } from '../utils/storage';
-import { THEMES, getThemeById, selectBookByTheme, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
+import { THEMES, getThemeById, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
 import {
   STREAK_REWARDS,
   getStreakTitle,
@@ -68,7 +70,7 @@ import {
   calculateStreakBonusScore,
   STREAK_INHERIT_COST,
 } from '../data/streaks';
-import { generateDailyChallenge, getTodayDateKey, getDailyChallengeBooks } from '../data/dailyChallenge';
+import { getTodayDateKey, getDailyChallengeBooks } from '../data/dailyChallenge';
 import { calculateRating } from '../data/rating';
 import {
   selectRandomEvent,
@@ -2749,15 +2751,25 @@ export const startThemeGame = (themeId: string) => {
 
   const progress = getThemeProgress(themeId);
   const foundBookIds = progress?.completedBookIds || [];
-  const bookId = selectBookByTheme(themeId, foundBookIds);
+  const collectionEntries = getAllCollectionEntries();
   
-  if (!bookId) {
+  const smartSelection = selectSmartBookByTheme(theme.bookIds, {
+    excludeIds: foundBookIds,
+    recentBookGenres: [],
+    recentBookIds: foundBookIds,
+    collectionEntries,
+    consecutiveCorrect: 0,
+    currentLevel: foundBookIds.length + 1,
+    targetFamiliarRatio: 0.5,
+    genreDiversityWindow: 3,
+  });
+  
+  if (!smartSelection) {
     completeThemeChallenge(themeId);
     return;
   }
 
-  const book = BOOKS.find(b => b.id === bookId);
-  if (!book) return;
+  const book = smartSelection.book;
 
   setCurrentTheme(theme);
   setThemeHintsUsed(0);
@@ -2917,9 +2929,21 @@ export const nextThemeRound = () => {
   const theme = getThemeById(state.currentThemeId);
   if (!theme) return;
 
-  const bookId = selectBookByTheme(state.currentThemeId, state.themeFoundBooks);
+  const collectionEntries = getAllCollectionEntries();
+  const recentGenres = getRecentBookGenresFromHistory(state.roundDetails);
   
-  if (!bookId) {
+  const smartSelection = selectSmartBookByTheme(theme.bookIds, {
+    excludeIds: state.themeFoundBooks,
+    recentBookGenres: recentGenres,
+    recentBookIds: state.themeFoundBooks,
+    collectionEntries,
+    consecutiveCorrect: state.consecutiveCorrect,
+    currentLevel: state.themeFoundBooks.length + 1,
+    targetFamiliarRatio: 0.4,
+    genreDiversityWindow: 3,
+  });
+  
+  if (!smartSelection) {
     setGameState(prev => ({
       ...prev,
       state: 'won',
@@ -2928,8 +2952,7 @@ export const nextThemeRound = () => {
     return;
   }
 
-  const book = BOOKS.find(b => b.id === bookId);
-  if (!book) return;
+  const book = smartSelection.book;
 
   const config = getDifficultyConfig(state.difficultyLevel);
 
@@ -3248,7 +3271,8 @@ export const continueThemeGame = (themeId: string): boolean => {
 };
 
 export const startDailyChallenge = () => {
-  const challenge = generateDailyChallenge();
+  const collectionEntries = getAllCollectionEntries();
+  const challenge = generateSmartDailyChallenge(new Date(), collectionEntries, 5);
   const books = getDailyChallengeBooks(challenge);
   
   if (books.length === 0) return;

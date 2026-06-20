@@ -1,5 +1,6 @@
-import type { DifficultyConfig, DifficultyLevel, DifficultyAdjustmentResult, Book, CollectionEntry, BookFamiliarity, FamiliarityLevel, SmartBookSelectionOptions, SmartBookSelectionResult } from '../types/game';
+import type { DifficultyConfig, DifficultyLevel, DifficultyAdjustmentResult, Book, CollectionEntry, BookFamiliarity, FamiliarityLevel, SmartBookSelectionOptions, SmartBookSelectionResult, DailyChallenge, DailyChallengeBook } from '../types/game';
 import { BOOKS } from './books';
+import { getDateKey } from './dailyChallenge';
 
 export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
   easy: {
@@ -435,4 +436,174 @@ export const getRecentBookGenresFromHistory = (
   roundDetails: { targetBookGenre: string }[]
 ): string[] => {
   return roundDetails.map(r => r.targetBookGenre);
+};
+
+export const selectSmartBookByTheme = (
+  themeBookIds: string[],
+  options: Omit<SmartBookSelectionOptions, 'difficultyLevel'> & { difficultyLevel?: DifficultyLevel }
+): SmartBookSelectionResult | null => {
+  const {
+    excludeIds = [],
+    recentBookGenres = [],
+    recentBookIds = [],
+    collectionEntries = {},
+    consecutiveCorrect = 0,
+    currentLevel = 1,
+    targetFamiliarRatio = 0.4,
+    genreDiversityWindow = 3,
+  } = options;
+
+  if (themeBookIds.length === 0) return null;
+
+  let availableBooks = BOOKS.filter(b => 
+    themeBookIds.includes(b.id) && 
+    !excludeIds.includes(b.id) &&
+    !recentBookIds.includes(b.id)
+  );
+
+  if (availableBooks.length === 0) {
+    availableBooks = BOOKS.filter(b => 
+      themeBookIds.includes(b.id) && 
+      !excludeIds.includes(b.id)
+    );
+  }
+
+  if (availableBooks.length === 0) {
+    availableBooks = BOOKS.filter(b => themeBookIds.includes(b.id));
+  }
+
+  if (availableBooks.length === 0) return null;
+
+  const recentGenresSet = new Set(
+    recentBookGenres.slice(-genreDiversityWindow)
+  );
+
+  const booksWithDiversityBoost = availableBooks.map(book => {
+    const isNewGenre = !recentGenresSet.has(book.genre);
+    const diversityBoost = isNewGenre ? 0.3 : 0;
+    return { book, diversityBoost, isNewGenre };
+  });
+
+  const newGenreBooks = booksWithDiversityBoost.filter(b => b.isNewGenre);
+  const hasNewGenreOption = newGenreBooks.length > 0;
+
+  const shouldPreferFamiliar = determineFamiliarPreference(
+    consecutiveCorrect,
+    currentLevel,
+    targetFamiliarRatio
+  );
+
+  const booksWithFamiliarity = booksWithDiversityBoost.map(({ book, diversityBoost, isNewGenre }) => {
+    const familiarity = calculateBookFamiliarity(book.id, collectionEntries);
+    const familiarityLevel = getFamiliarityLevel(familiarity.familiarityScore);
+    
+    let score = diversityBoost;
+    
+    if (shouldPreferFamiliar) {
+      score += familiarity.familiarityScore * 0.5;
+    } else {
+      score += (1 - familiarity.familiarityScore) * 0.5;
+    }
+
+    score += Math.random() * 0.2;
+
+    return {
+      book,
+      familiarity,
+      familiarityLevel,
+      score,
+      isNewGenre,
+    };
+  });
+
+  let finalCandidates = booksWithFamiliarity;
+  
+  if (hasNewGenreOption && recentGenresSet.size >= 2) {
+    const diversityCandidates = booksWithFamiliarity.filter(b => b.isNewGenre);
+    if (diversityCandidates.length >= 2) {
+      finalCandidates = diversityCandidates;
+    }
+  }
+
+  const sorted = finalCandidates.sort((a, b) => b.score - a.score);
+  
+  const topCount = Math.min(3, sorted.length);
+  const topCandidates = sorted.slice(0, topCount);
+  const selected = topCandidates[Math.floor(Math.random() * topCandidates.length)];
+
+  let reason = '';
+  if (selected.isNewGenre) {
+    reason = '主题内选择了新类型书籍，保持多样性';
+  } else if (shouldPreferFamiliar) {
+    reason = '主题内选择了熟悉的书籍，巩固节奏';
+  } else {
+    reason = '主题内选择了新书籍，增加挑战';
+  }
+
+  return {
+    book: selected.book,
+    selectionReason: reason,
+    familiarityLevel: selected.familiarityLevel,
+    isNewGenre: selected.isNewGenre,
+  };
+};
+
+export const generateSmartDailyChallenge = (
+  date: Date = new Date(),
+  collectionEntries: Record<string, CollectionEntry> = {},
+  bookCount: number = 5
+): DailyChallenge => {
+  const dateKey = getDateKey(date);
+  
+  const selectedBooks: Book[] = [];
+  const usedGenres: string[] = [];
+  const usedIds: string[] = [];
+
+  for (let i = 0; i < bookCount; i++) {
+    const availableBooks = BOOKS.filter(b => !usedIds.includes(b.id));
+    if (availableBooks.length === 0) break;
+
+    const recentGenresSet = new Set(usedGenres.slice(-3));
+
+    const booksWithScores = availableBooks.map(book => {
+      const isNewGenre = !recentGenresSet.has(book.genre);
+      const diversityBoost = isNewGenre ? 0.3 : 0;
+      
+      const familiarity = calculateBookFamiliarity(book.id, collectionEntries);
+      const familiarityScore = familiarity.familiarityScore;
+
+      let familiarityWeight = 0;
+      if (i === 0) {
+        familiarityWeight = familiarityScore * 0.4;
+      } else if (i >= bookCount - 2) {
+        familiarityWeight = (1 - familiarityScore) * 0.4;
+      } else {
+        const midRatio = (i - 1) / Math.max(1, bookCount - 3);
+        familiarityWeight = (1 - midRatio) * familiarityScore * 0.4 + midRatio * (1 - familiarityScore) * 0.4;
+      }
+
+      const score = diversityBoost + familiarityWeight + Math.random() * 0.15;
+
+      return { book, score, isNewGenre };
+    });
+
+    const sorted = booksWithScores.sort((a, b) => b.score - a.score);
+    const topCandidates = sorted.slice(0, Math.min(5, sorted.length));
+    const selected = topCandidates[Math.floor(Math.random() * topCandidates.length)];
+
+    selectedBooks.push(selected.book);
+    usedIds.push(selected.book.id);
+    usedGenres.push(selected.book.genre);
+  }
+
+  const dailyBooks: DailyChallengeBook[] = selectedBooks.map((book, index) => ({
+    bookId: book.id,
+    order: index + 1,
+  }));
+
+  return {
+    date: dateKey,
+    books: dailyBooks,
+    totalBooks: bookCount,
+  };
 };
