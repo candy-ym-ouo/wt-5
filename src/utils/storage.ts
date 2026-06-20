@@ -26,6 +26,31 @@ export const TUTORIAL_COMPLETED_KEY = 'old_bookstore_tutorial_completed';
 export const TUTORIAL_STEP_KEY = 'old_bookstore_tutorial_step';
 
 const CURRENT_STORAGE_VERSION = 4;
+const CURRENT_STORAGE_VERSION_EXTENDED = 5;
+
+let _safetyCheckPerformed = false;
+
+function _readJSON<T>(key: string, defaultValue: T): T {
+  try {
+    const data = localStorage.getItem(key);
+    if (data === null) return defaultValue;
+    return JSON.parse(data) as T;
+  } catch {
+    return defaultValue;
+  }
+}
+
+function _ensureSafetyCheck(): void {
+  if (_safetyCheckPerformed) return;
+  try {
+    sanitizeLeaderboard({ removeInvalid: true, fillDefaults: true });
+    sanitizePersonalBest({ fillDefaults: true });
+    sanitizeAchievements({ fillDefaults: true, removeInvalid: false });
+    _safetyCheckPerformed = true;
+  } catch {
+    _safetyCheckPerformed = true;
+  }
+}
 
 function getWeekNumber(date: number): number {
   const d = new Date(date);
@@ -104,12 +129,8 @@ function isDateInSeason(date: number, seasonId: string): boolean {
 }
 
 export const getLeaderboard = (): LeaderboardEntry[] => {
-  try {
-    const data = localStorage.getItem(LEADERBOARD_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
+  _ensureSafetyCheck();
+  return _readJSON<LeaderboardEntry[]>(LEADERBOARD_KEY, []);
 };
 
 export const saveLeaderboardEntry = (entry: LeaderboardEntry): LeaderboardEntry[] => {
@@ -129,25 +150,8 @@ export const saveLeaderboardEntry = (entry: LeaderboardEntry): LeaderboardEntry[
 };
 
 export function getPersonalBest(): PersonalBest {
-  try {
-    const data = localStorage.getItem(PERSONAL_BEST_KEY);
-    if (data) return JSON.parse(data);
-  } catch {}
-  return {
-    highestScore: 0,
-    highestScoreDate: 0,
-    totalGamesPlayed: 0,
-    totalBooksFound: 0,
-    fastestFind: 0,
-    fastestFindDate: 0,
-    fewestHintsScore: 0,
-    fewestHintsDate: 0,
-    fewestHintsCount: -1,
-    longestStreak: 0,
-    longestStreakDate: 0,
-    weeklyBestScores: {},
-    seasonBestScores: {},
-  };
+  _ensureSafetyCheck();
+  return _readJSON<PersonalBest>(PERSONAL_BEST_KEY, getDefaultPersonalBest());
 }
 
 export function updatePersonalBest(update: {
@@ -218,12 +222,8 @@ export function getPersonalBestRank(score: number): number {
 }
 
 export const getUnlockedAchievements = (): string[] => {
-  try {
-    const data = localStorage.getItem(ACHIEVEMENTS_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
+  _ensureSafetyCheck();
+  return _readJSON<string[]>(ACHIEVEMENTS_KEY, []);
 };
 
 export const saveUnlockedAchievements = (ids: string[]): void => {
@@ -231,12 +231,8 @@ export const saveUnlockedAchievements = (ids: string[]): void => {
 };
 
 export const getAllAchievementProgress = (): Record<string, AchievementProgress> => {
-  try {
-    const data = localStorage.getItem(ACHIEVEMENTS_PROGRESS_KEY);
-    return data ? JSON.parse(data) : {};
-  } catch {
-    return {};
-  }
+  _ensureSafetyCheck();
+  return _readJSON<Record<string, AchievementProgress>>(ACHIEVEMENTS_PROGRESS_KEY, {});
 };
 
 export const getAchievementProgress = (achievementId: string): AchievementProgress | null => {
@@ -946,8 +942,6 @@ export function resetTutorial(): void {
 export const STORAGE_BACKUP_PREFIX = 'old_bookstore_backup_';
 export const STORAGE_METADATA_KEY = 'old_bookstore_storage_metadata';
 
-const CURRENT_STORAGE_VERSION_EXTENDED = 5;
-
 export interface StorageMetadata {
   version: number;
   lastMigratedAt: number;
@@ -999,16 +993,39 @@ function getStorageMetadata(): StorageMetadata {
   try {
     const data = localStorage.getItem(STORAGE_METADATA_KEY);
     if (data) {
-      return JSON.parse(data);
+      const metadata = JSON.parse(data) as StorageMetadata;
+      if (metadata.version >= 1 && typeof metadata.lastMigratedAt === 'number') {
+        return metadata;
+      }
     }
   } catch {}
-  return {
+
+  try {
+    const oldVersionStr = localStorage.getItem(STORAGE_VERSION_KEY);
+    if (oldVersionStr) {
+      const oldVersion = parseInt(oldVersionStr, 10);
+      if (!isNaN(oldVersion) && oldVersion >= 1) {
+        const bridgedMetadata: StorageMetadata = {
+          version: oldVersion,
+          lastMigratedAt: 0,
+          lastCleanedAt: 0,
+          backupVersion: 0,
+          corruptionCount: 0,
+        };
+        saveStorageMetadata(bridgedMetadata);
+        return bridgedMetadata;
+      }
+    }
+  } catch {}
+
+  const defaultMetadata: StorageMetadata = {
     version: 1,
     lastMigratedAt: 0,
     lastCleanedAt: 0,
     backupVersion: 0,
     corruptionCount: 0,
   };
+  return defaultMetadata;
 }
 
 function saveStorageMetadata(metadata: StorageMetadata): void {
@@ -1663,12 +1680,21 @@ export function runExtendedMigrations(): void {
     metadata.lastMigratedAt = Date.now();
     saveStorageMetadata(metadata);
 
+    try {
+      localStorage.setItem(STORAGE_VERSION_KEY, String(targetVersion));
+    } catch {}
+
     const oneWeek = 7 * 24 * 60 * 60 * 1000;
     if (Date.now() - metadata.lastCleanedAt > oneWeek) {
       sanitizeAllStorage({ removeInvalid: true, fillDefaults: true });
+      metadata.lastCleanedAt = Date.now();
+      saveStorageMetadata(metadata);
     }
+
+    _safetyCheckPerformed = true;
   } catch (e) {
     console.error('版本迁移执行失败:', e);
+    _safetyCheckPerformed = true;
   }
 }
 
@@ -1688,12 +1714,21 @@ export function repairAndRestore(): boolean {
     sanitizeAllStorage({ removeInvalid: true, fillDefaults: true, backupBefore: false });
     
     if (detectCorruption()) {
-      return restoreFromBackup();
+      const restored = restoreFromBackup();
+      if (restored) {
+        _safetyCheckPerformed = true;
+      }
+      return restored;
     }
     
+    _safetyCheckPerformed = true;
     return true;
   } catch {
-    return restoreFromBackup();
+    const restored = restoreFromBackup();
+    if (restored) {
+      _safetyCheckPerformed = true;
+    }
+    return restored;
   }
 }
 
@@ -1754,37 +1789,13 @@ export function importData(jsonString: string): boolean {
 }
 
 export function safeGetLeaderboard(): LeaderboardEntry[] {
-  try {
-    const result = sanitizeLeaderboard({ removeInvalid: true, fillDefaults: true });
-    if (result.valid || result.fixed) {
-      return getLeaderboard();
-    }
-    return [];
-  } catch {
-    return [];
-  }
+  return getLeaderboard();
 }
 
 export function safeGetAllAchievementProgress(): Record<string, AchievementProgress> {
-  try {
-    const result = sanitizeAchievements({ fillDefaults: true });
-    if (result.valid || result.fixed) {
-      return getAllAchievementProgress();
-    }
-    return {};
-  } catch {
-    return {};
-  }
+  return getAllAchievementProgress();
 }
 
 export function safeGetPersonalBest(): PersonalBest {
-  try {
-    const result = sanitizePersonalBest({ fillDefaults: true });
-    if (result.valid || result.fixed) {
-      return getPersonalBest();
-    }
-    return getDefaultPersonalBest();
-  } catch {
-    return getDefaultPersonalBest();
-  }
+  return getPersonalBest();
 }
