@@ -4,6 +4,8 @@ import {
   getStoreState,
   saveStoreState,
   checkAndPerformDailyReset,
+  checkArrangementExpiry as checkArrangementExpiryStorage,
+  getArrangementRemainingTime as getArrangementRemainingTimeStorage,
   addCoins,
   addReputation,
   activateArrangement,
@@ -45,12 +47,32 @@ export const closeStoreManager = (): void => {
   setShowStoreManager(false);
 };
 
+const ensureArrangementChecked = (): StoreState => {
+  const currentState = storeState();
+  const checkedState = checkArrangementExpiryStorage(currentState);
+  if (checkedState !== currentState) {
+    persistState(checkedState);
+    return checkedState;
+  }
+  return currentState;
+};
+
 export const getStoreBonus = (): StoreBonus => {
-  return calculateStoreBonus(storeState());
+  const state = ensureArrangementChecked();
+  return calculateStoreBonus(state);
+};
+
+export const getArrangementRemainingTime = (): number => {
+  const state = ensureArrangementChecked();
+  return getArrangementRemainingTimeStorage(state);
+};
+
+export const checkArrangementExpiry = (): void => {
+  ensureArrangementChecked();
 };
 
 export const getStoreInfo = createMemo(() => {
-  const state = storeState();
+  const state = ensureArrangementChecked();
   const bonus = calculateStoreBonus(state);
   const activeArrangement = state.activeArrangementId ? state.arrangements[state.activeArrangementId] : null;
   const activeCustomer = state.activeCustomerId ? state.customers[state.activeCustomerId] : null;
@@ -81,7 +103,7 @@ export const getStoreInfo = createMemo(() => {
 });
 
 export const processBookFound = (book: Book, score: number): { coinsEarned: number; reputationEarned: number; customerSatisfied: boolean } => {
-  let state = storeState();
+  let state = ensureArrangementChecked();
   
   const activeCustomer = state.activeCustomerId ? state.customers[state.activeCustomerId] : null;
   let customerBonus = 0;

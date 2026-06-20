@@ -2802,12 +2802,14 @@ export const startThemeGame = (themeId: string) => {
   setGamesPlayed(newGamesPlayed);
 
   const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
+  const bonusTime = getTimeBonus();
+  const bonusHints = getHintBonus();
   setGameState(prev => ({
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: defaultConfig.gameTime,
-    hintsRemaining: defaultConfig.initialHints,
+    timeRemaining: defaultConfig.gameTime + bonusTime,
+    hintsRemaining: defaultConfig.initialHints + bonusHints,
     hintsUsed: 0,
     currentLevel: foundBookIds.length + 1,
     targetBookId: book.id,
@@ -2977,6 +2979,8 @@ export const nextThemeRound = () => {
   const book = smartSelection.book;
 
   const config = getDifficultyConfig(state.difficultyLevel);
+  const storeTimeBonus = getTimeBonus();
+  const storeHintBonus = getHintBonus();
 
   setupRound(book);
 
@@ -2991,9 +2995,10 @@ export const nextThemeRound = () => {
     currentLevel: prev.themeFoundBooks.length + 1,
     targetBookId: book.id,
     unlockedClues: [currentClues()[0]?.id || ''],
-    hintsRemaining: Math.min(prev.hintsRemaining + 1, config.initialHints),
+    hintsRemaining: Math.min(prev.hintsRemaining + 1 + storeHintBonus, config.initialHints + storeHintBonus),
     hintsUsed: 0,
     showDifficultyChange: false,
+    timeRemaining: prev.timeRemaining + storeTimeBonus,
     powerUps: {
       ...prev.powerUps,
       peekActive: false,
@@ -3050,6 +3055,8 @@ export const selectBookWithRarity = (bookId: string): boolean => {
     
     const baseScoreWithRarity = Math.floor(baseScore * rarityMultiplier);
     
+    const storeBonus = getStoreBonus();
+    
     const themeFilterResultData = calculateThemeFilterCompensation();
     setThemeFilterResult(themeFilterResultData);
 
@@ -3057,8 +3064,11 @@ export const selectBookWithRarity = (bookId: string): boolean => {
     const scoreAfterThemeFilter = Math.floor(
       (baseScoreWithRarity + themeFilterResultData.compensationScore) *
       themeFilterResultData.bonusMultiplier *
-      diffModifier.scoreMultiplier
+      diffModifier.scoreMultiplier *
+      storeBonus.scoreMultiplier
     );
+
+    processBookFound(book, Math.max(scoreAfterThemeFilter, 100));
 
     const streakResult = handleStreakOnSuccess(Math.max(scoreAfterThemeFilter, 100));
     const totalScore = streakResult.streakBonus + Math.max(scoreAfterThemeFilter, 100);
@@ -3310,13 +3320,15 @@ export const startDailyChallenge = () => {
   setGamesPlayed(newGamesPlayed);
   
   const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
+  const bonusTime = getTimeBonus();
+  const bonusHints = getHintBonus();
   
   setGameState(prev => ({
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: defaultConfig.gameTime,
-    hintsRemaining: defaultConfig.initialHints,
+    timeRemaining: defaultConfig.gameTime + bonusTime,
+    hintsRemaining: defaultConfig.initialHints + bonusHints,
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: firstBook.id,
@@ -3377,16 +3389,19 @@ export const nextDailyRound = () => {
   const streakTimeBonus = streakReward?.bonusTime || 0;
   const streakHintBonus = streakReward?.bonusHints || 0;
   
+  const storeTimeBonus = getTimeBonus();
+  const storeHintBonus = getHintBonus();
+  
   setGameState(prev => ({
     ...prev,
     state: 'playing',
     currentLevel: nextIndex + 1,
     targetBookId: nextBook.id,
     unlockedClues: [currentClues()[0]?.id || ''],
-    hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus, config.initialHints + streakHintBonus),
+    hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus + storeHintBonus, config.initialHints + streakHintBonus + storeHintBonus),
     hintsUsed: 0,
     showDifficultyChange: false,
-    timeRemaining: prev.timeRemaining + streakTimeBonus + 10,
+    timeRemaining: prev.timeRemaining + streakTimeBonus + 10 + storeTimeBonus,
     powerUps: {
       ...prev.powerUps,
       peekActive: false,
@@ -3594,6 +3609,9 @@ export const startRushGame = (difficulty?: DifficultyLevel, difficultyMode?: Dif
   const newGamesPlayed = incrementGamesPlayed();
   setGamesPlayed(newGamesPlayed);
 
+  const bonusTime = getTimeBonus();
+  const bonusHints = getHintBonus();
+
   const stages: RushStage[] = books.map((book, index) => ({
     id: `rush-stage-${Date.now()}-${index}`,
     stageNumber: index + 1,
@@ -3606,8 +3624,8 @@ export const startRushGame = (difficulty?: DifficultyLevel, difficultyMode?: Dif
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: config.gameTime,
-    hintsRemaining: config.initialHints,
+    timeRemaining: config.gameTime + bonusTime,
+    hintsRemaining: config.initialHints + bonusHints,
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: firstBook.id,
@@ -3754,6 +3772,9 @@ export const nextRushStage = () => {
 
   const lastBonus = state.rush.stages[state.rush.currentStageIndex];
   const timeBonusFromLast = lastBonus?.timeBonus || 0;
+  
+  const storeTimeBonus = getTimeBonus();
+  const storeHintBonus = getHintBonus();
 
   setGameState(prev => ({
     ...prev,
@@ -3761,10 +3782,10 @@ export const nextRushStage = () => {
     currentLevel: nextStageIndex + 1,
     targetBookId: nextBook.id,
     unlockedClues: [currentClues()[0]?.id || ''],
-    hintsRemaining: Math.min(prev.hintsRemaining + 1, config.initialHints + 2),
+    hintsRemaining: Math.min(prev.hintsRemaining + 1 + storeHintBonus, config.initialHints + 2 + storeHintBonus),
     hintsUsed: 0,
     showDifficultyChange: false,
-    timeRemaining: prev.timeRemaining + timeBonusFromLast,
+    timeRemaining: prev.timeRemaining + timeBonusFromLast + storeTimeBonus,
     currentRoundWrongPicks: [],
     rush: {
       ...prev.rush,

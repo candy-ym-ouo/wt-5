@@ -93,6 +93,12 @@ export interface StoreState {
   storeOpen: boolean;
   dailyResetTime: number;
   lastDailyReset?: string;
+  permanentBonuses: {
+    scoreMultiplier: number;
+    timeBonus: number;
+    hintsBonus: number;
+    coinMultiplier: number;
+  };
 }
 
 export type StoreTab = 'overview' | 'customers' | 'arrangement' | 'tasks';

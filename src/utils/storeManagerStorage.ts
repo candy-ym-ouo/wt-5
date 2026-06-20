@@ -73,12 +73,27 @@ const createInitialStoreState = (): StoreState => {
     activeCustomerId: null,
     storeOpen: false,
     dailyResetTime: 4,
+    permanentBonuses: {
+      scoreMultiplier: 0,
+      timeBonus: 0,
+      hintsBonus: 0,
+      coinMultiplier: 0,
+    },
   };
 };
 
 export const getStoreState = (): StoreState => {
   const saved = _readJSON<StoreState | null>(STORE_STATE_KEY, null);
   if (saved) {
+    if (!saved.permanentBonuses) {
+      saved.permanentBonuses = {
+        scoreMultiplier: 0,
+        timeBonus: 0,
+        hintsBonus: 0,
+        coinMultiplier: 0,
+      };
+      _writeJSON(STORE_STATE_KEY, saved);
+    }
     return saved;
   }
   const initial = createInitialStoreState();
@@ -310,17 +325,30 @@ export const claimTaskReward = (state: StoreState, taskId: string): { success: b
   let newState = { ...state };
   const rewards: string[] = [];
   
+  if (!newState.permanentBonuses) {
+    newState.permanentBonuses = {
+      scoreMultiplier: 0,
+      timeBonus: 0,
+      hintsBonus: 0,
+      coinMultiplier: 0,
+    };
+  } else {
+    newState.permanentBonuses = { ...newState.permanentBonuses };
+  }
+  
   if (task.rewards.coins) {
     newState = addCoins(newState, task.rewards.coins);
     rewards.push(`+${task.rewards.coins} 金币`);
   }
   
   if (task.rewards.scoreBonus) {
-    rewards.push(`+${task.rewards.scoreBonus} 分数加成`);
+    newState.permanentBonuses.scoreMultiplier += task.rewards.scoreBonus;
+    rewards.push(`+${task.rewards.scoreBonus}% 永久分数加成`);
   }
   
   if (task.rewards.hints) {
-    rewards.push(`+${task.rewards.hints} 提示`);
+    newState.permanentBonuses.hintsBonus += task.rewards.hints;
+    rewards.push(`+${task.rewards.hints} 永久提示加成`);
   }
   
   if (task.rewards.arrangementId) {
@@ -367,6 +395,48 @@ export const selectRandomActiveCustomer = (state: StoreState): CustomerPreferenc
   return weightedCustomers[0].customer;
 };
 
+export const checkArrangementExpiry = (state: StoreState): StoreState => {
+  if (!state.activeArrangementId || !state.arrangements[state.activeArrangementId]) {
+    return state;
+  }
+  
+  const arrangement = state.arrangements[state.activeArrangementId];
+  if (!arrangement.active || !arrangement.activatedAt || !arrangement.duration) {
+    return state;
+  }
+  
+  const now = Date.now();
+  const expiresAt = arrangement.activatedAt + arrangement.duration * 60 * 1000;
+  
+  if (now >= expiresAt) {
+    const newState = { ...state };
+    newState.arrangements = { ...state.arrangements };
+    newState.arrangements[state.activeArrangementId] = {
+      ...arrangement,
+      active: false,
+    };
+    newState.activeArrangementId = null;
+    return newState;
+  }
+  
+  return state;
+};
+
+export const getArrangementRemainingTime = (state: StoreState): number => {
+  if (!state.activeArrangementId || !state.arrangements[state.activeArrangementId]) {
+    return 0;
+  }
+  
+  const arrangement = state.arrangements[state.activeArrangementId];
+  if (!arrangement.active || !arrangement.activatedAt || !arrangement.duration) {
+    return 0;
+  }
+  
+  const now = Date.now();
+  const expiresAt = arrangement.activatedAt + arrangement.duration * 60 * 1000;
+  return Math.max(0, Math.floor((expiresAt - now) / 1000));
+};
+
 export const getStoreBonus = (state: StoreState) => {
   let scoreMultiplier = 1;
   let timeBonus = 0;
@@ -379,8 +449,16 @@ export const getStoreBonus = (state: StoreState) => {
   scoreMultiplier *= levelBonus.scoreMultiplier;
   coinMultiplier *= levelBonus.coinMultiplier;
   
-  if (state.activeArrangementId && state.arrangements[state.activeArrangementId]) {
-    const arrangement = state.arrangements[state.activeArrangementId];
+  if (state.permanentBonuses) {
+    scoreMultiplier += state.permanentBonuses.scoreMultiplier / 100;
+    timeBonus += state.permanentBonuses.timeBonus;
+    hintsBonus += state.permanentBonuses.hintsBonus;
+    coinMultiplier += state.permanentBonuses.coinMultiplier / 100;
+  }
+  
+  const checkedState = checkArrangementExpiry(state);
+  if (checkedState.activeArrangementId && checkedState.arrangements[checkedState.activeArrangementId]) {
+    const arrangement = checkedState.arrangements[checkedState.activeArrangementId];
     switch (arrangement.bonusType) {
       case 'score':
         scoreMultiplier += arrangement.bonusValue / 100;

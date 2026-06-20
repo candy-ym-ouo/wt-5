@@ -7143,4 +7143,20 @@ body {
   font-size: 1.1rem;
 }
 
+.bonus-countdown {
+  margin-top: 4px;
+  font-size: 0.85rem;
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.arrangement-active {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2), rgba(34, 197, 94, 0.1));
+  color: #22c55e;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
 

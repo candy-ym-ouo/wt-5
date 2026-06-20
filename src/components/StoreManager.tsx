@@ -1,4 +1,4 @@
-import { createMemo } from 'solid-js';
+import { createMemo, createSignal, onMount, onCleanup } from 'solid-js';
 import {
   storeState,
   activeStoreTab,
@@ -7,6 +7,8 @@ import {
   arrangeShelf,
   claimReward,
   setActiveCustomer,
+  getArrangementRemainingTime,
+  checkArrangementExpiry,
 } from '../store/storeManager';
 import type { StoreTab } from '../types/storeManager';
 
@@ -24,9 +26,32 @@ interface StoreManagerProps {
 export default function StoreManager(props: StoreManagerProps) {
   const info = getStoreInfo();
   const state = createMemo(() => storeState());
+  const [, setTick] = createSignal(0);
+  let timerInterval: number | null = null;
+
+  onMount(() => {
+    checkArrangementExpiry();
+    timerInterval = window.setInterval(() => {
+      checkArrangementExpiry();
+      setTick(t => t + 1);
+    }, 1000);
+  });
+
+  onCleanup(() => {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+    }
+  });
 
   const formatNumber = (num: number): string => {
     return num.toLocaleString('zh-CN');
+  };
+
+  const formatTime = (seconds: number): string => {
+    if (seconds <= 0) return '已结束';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${String(secs).padStart(2, '0')}`;
   };
 
   const getProgressPercent = (current: number, max: number): number => {
@@ -149,8 +174,23 @@ export default function StoreManager(props: StoreManagerProps) {
                     <div class="bonus-info">
                       <div class="bonus-name">{info.activeArrangement.name}</div>
                       <div class="bonus-value">+{info.activeArrangement.bonusValue}% {info.activeArrangement.bonusType === 'score' ? '得分' : info.activeArrangement.bonusType === 'time' ? '时间' : info.activeArrangement.bonusType === 'hints' ? '提示' : info.activeArrangement.bonusType === 'clue_speed' ? '线索速度' : '稀有概率'}</div>
+                      <div class="bonus-countdown">⏱️ 剩余 {formatTime(getArrangementRemainingTime())}</div>
                     </div>
                     <div class="bonus-source">书架整理</div>
+                  </div>
+                )}
+                {(state().permanentBonuses.scoreMultiplier > 0 || state().permanentBonuses.timeBonus > 0 || state().permanentBonuses.hintsBonus > 0) && (
+                  <div class="bonus-item">
+                    <span class="bonus-icon">🎁</span>
+                    <div class="bonus-info">
+                      <div class="bonus-name">任务奖励加成</div>
+                      <div class="bonus-value">
+                        {state().permanentBonuses.scoreMultiplier > 0 && `+${state().permanentBonuses.scoreMultiplier}% 分数 `}
+                        {state().permanentBonuses.timeBonus > 0 && `+${state().permanentBonuses.timeBonus}s 时间 `}
+                        {state().permanentBonuses.hintsBonus > 0 && `+${state().permanentBonuses.hintsBonus} 提示`}
+                      </div>
+                    </div>
+                    <div class="bonus-source">永久有效</div>
                   </div>
                 )}
                 {info.activeCustomer && (
@@ -260,7 +300,7 @@ export default function StoreManager(props: StoreManagerProps) {
                       <div class="arrangement-name">
                         {arrangement.name}
                         {!arrangement.unlocked && <span class="arrangement-lock">🔒</span>}
-                        {arrangement.active && <span class="arrangement-active">✅ 生效中</span>}
+                        {arrangement.active && <span class="arrangement-active">✅ 生效中 {formatTime(getArrangementRemainingTime())}</span>}
                       </div>
                       <div class="arrangement-desc">{arrangement.description}</div>
                       <div class="arrangement-bonus">
