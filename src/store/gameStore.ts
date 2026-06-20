@@ -52,6 +52,7 @@ import {
   updateCollectionEntry,
   getUnlockedCollectionCount,
   getAllCollectionEntries,
+  addCollectionAchievement,
 } from '../utils/storage';
 import { THEMES, getThemeById, selectBookByTheme, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
 import {
@@ -590,8 +591,38 @@ export const checkAchievements = () => {
     if (ach) {
       setShowAchievementPopup(ach.title);
       setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
+
+      const st = gameState();
+      const lastBookId = st.foundBooks[st.foundBooks.length - 1];
+      if (lastBookId && isAchievementBookRelated(newAchievement, lastBookId)) {
+        addCollectionAchievement(lastBookId, newAchievement);
+      }
     }
   }
+};
+
+const isAchievementBookRelated = (achievementId: string, bookId: string): boolean => {
+  const book = BOOKS.find(b => b.id === bookId);
+  if (!book) return false;
+  const relatedIds = [
+    'first_book',
+    'book_10',
+    'book_25',
+    'book_50',
+    'book_100',
+    'purist',
+    'hard_book',
+    'speedster',
+    'hint_free',
+    'genre_master',
+    'collector',
+  ];
+  if (book.genre === '文学' && achievementId === 'literature_lover') return true;
+  if (book.genre === '哲学' && achievementId === 'philosopher') return true;
+  if (book.genre === '历史' && achievementId === 'history_buff') return true;
+  if (book.genre === '科幻' && achievementId === 'sci_fi_fan') return true;
+  if ((book.rarity === 'rare' || book.rarity === 'legendary') && achievementId === 'rare_book') return true;
+  return relatedIds.includes(achievementId);
 };
 
 const checkStreakAchievements = (
@@ -617,6 +648,12 @@ const checkStreakAchievements = (
     if (ach) {
       setShowAchievementPopup(ach.title);
       setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
+
+      const st = gameState();
+      const lastBookId = st.foundBooks[st.foundBooks.length - 1];
+      if (lastBookId) {
+        addCollectionAchievement(lastBookId, newAchievement);
+      }
     }
   }
 };
@@ -2636,6 +2673,8 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       checkAchievements();
       checkStreakAchievements(newStreakCount);
       computeGameRating();
+      updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      setCollectionCount(getUnlockedCollectionCount());
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
@@ -2674,6 +2713,8 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       checkAchievements();
       checkStreakAchievements(newStreakCount);
       computeGameRating();
+      updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      setCollectionCount(getUnlockedCollectionCount());
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
@@ -2710,6 +2751,8 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       checkAchievements();
       checkStreakAchievements(newStreakCount);
       computeGameRating();
+      updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      setCollectionCount(getUnlockedCollectionCount());
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
