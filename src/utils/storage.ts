@@ -19,6 +19,8 @@ export const LAST_GAME_REPLAY_KEY = 'old_bookstore_last_replay';
 export const DAILY_CHALLENGE_LEADERBOARD_KEY = 'old_bookstore_daily_leaderboard';
 export const DAILY_CHALLENGE_PROGRESS_KEY = 'old_bookstore_daily_progress';
 export const COLLECTION_KEY = 'old_bookstore_collection';
+export const SEEN_EVENT_TYPES_KEY = 'old_bookstore_seen_event_types';
+export const TOTAL_EVENTS_TRIGGERED_KEY = 'old_bookstore_total_events_triggered';
 
 const CURRENT_STORAGE_VERSION = 4;
 
@@ -860,4 +862,39 @@ export function addCollectionAchievement(bookId: string, achievementId: string):
     all[bookId] = entry;
     localStorage.setItem(COLLECTION_KEY, JSON.stringify(all));
   }
+}
+
+export function getSeenEventTypes(): string[] {
+  try {
+    const data = localStorage.getItem(SEEN_EVENT_TYPES_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveSeenEventTypes(types: string[]): void {
+  try {
+    localStorage.setItem(SEEN_EVENT_TYPES_KEY, JSON.stringify(types));
+  } catch {}
+}
+
+export function addSeenEventTypes(newTypes: string[]): void {
+  const existing = getSeenEventTypes();
+  const merged = [...new Set([...existing, ...newTypes])];
+  saveSeenEventTypes(merged);
+}
+
+export function getTotalEventsTriggered(): number {
+  try {
+    const data = localStorage.getItem(TOTAL_EVENTS_TRIGGERED_KEY);
+    return data ? parseInt(data, 10) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function incrementTotalEventsTriggered(count: number): void {
+  const current = getTotalEventsTriggered();
+  localStorage.setItem(TOTAL_EVENTS_TRIGGERED_KEY, String(current + count));
 }

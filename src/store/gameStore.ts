@@ -53,6 +53,10 @@ import {
   getUnlockedCollectionCount,
   getAllCollectionEntries,
   addCollectionAchievement,
+  getSeenEventTypes,
+  addSeenEventTypes,
+  getTotalEventsTriggered,
+  incrementTotalEventsTriggered,
 } from '../utils/storage';
 import { THEMES, getThemeById, selectBookByTheme, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
 import {
@@ -447,6 +451,8 @@ export const triggerRandomEvent = (): RandomEventResult | null => {
 
   applyRandomEventEffects(event);
 
+  incrementTotalEventsTriggered(1);
+
   const result: RandomEventResult = {
     event,
     scoreAdjustment: impact.scoreAdjustment,
@@ -515,38 +521,82 @@ export const hasRandomEventActive = (): boolean => {
 export const checkRandomEventAchievements = () => {
   const state = gameState();
   const unlocked = [...state.unlockedAchievements];
-  let newAchievement: string | null = null;
+  const newlyUnlocked: string[] = [];
 
-  if (state.randomEvent.eventsTriggeredThisGame >= 1 && !unlocked.includes('event_survivor')) {
-    if (unlockSingleAchievement('event_survivor')) {
-      newAchievement = 'event_survivor';
+  if (state.randomEvent.eventsTriggeredThisGame >= 1 && !unlocked.includes('first_random_event')) {
+    if (unlockSingleAchievement('first_random_event')) {
+      newlyUnlocked.push('first_random_event');
     }
   }
 
-  if (state.randomEvent.eventsSurvived >= 5 && !unlocked.includes('event_adapter')) {
-    if (unlockSingleAchievement('event_adapter')) {
-      newAchievement = 'event_adapter';
+  const totalTriggered = getTotalEventsTriggered();
+  const survivorResult = updateProgressiveAchievement('event_survivor', totalTriggered);
+  if (survivorResult.newStages.length > 0 && !unlocked.includes('event_survivor')) {
+    const newUnlocked = [...unlocked, 'event_survivor'];
+    setGameState(prev => ({ ...prev, unlockedAchievements: newUnlocked }));
+    saveUnlockedAchievements(newUnlocked);
+    newlyUnlocked.push('event_survivor');
+  }
+
+  const activeEvent = state.randomEvent.activeEvent;
+  if (activeEvent && !activeEvent.event.positive && !unlocked.includes('negative_event_overcome')) {
+    if (unlockSingleAchievement('negative_event_overcome')) {
+      newlyUnlocked.push('negative_event_overcome');
     }
   }
 
-  const totalEvents = state.randomEvent.eventHistory.length;
-  const positiveEvents = state.randomEvent.eventHistory.filter(e => e.result === 'positive').length;
-  
-  if (totalEvents >= 10 && positiveEvents >= totalEvents * 0.5 && !unlocked.includes('lucky_charm')) {
-    if (unlockSingleAchievement('lucky_charm')) {
-      newAchievement = 'lucky_charm';
+  const history = state.randomEvent.eventHistory;
+  if (history.length >= 3) {
+    const last3 = history.slice(-3);
+    if (last3.every(e => e.result === 'positive') && !unlocked.includes('lucky_streak')) {
+      if (unlockSingleAchievement('lucky_streak')) {
+        newlyUnlocked.push('lucky_streak');
+      }
     }
   }
 
-  const negativeEvents = state.randomEvent.eventHistory.filter(e => e.result === 'negative').length;
-  if (negativeEvents >= 8 && !unlocked.includes('troubleshooter')) {
-    if (unlockSingleAchievement('troubleshooter')) {
-      newAchievement = 'troubleshooter';
+  if (history.length > 0) {
+    const sessionTypes = history.map(e => e.eventId);
+    addSeenEventTypes(sessionTypes);
+    const seenTypes = new Set(getSeenEventTypes());
+    const allEventIds = new Set(['power_outage', 'shelf_rearrange', 'hint_failure', 'time_warp', 'bonus_round', 'fog_of_war', 'lucky_find', 'curse_of_doubt']);
+    if ([...allEventIds].every(id => seenTypes.has(id)) && !unlocked.includes('event_collector')) {
+      if (unlockSingleAchievement('event_collector')) {
+        newlyUnlocked.push('event_collector');
+      }
     }
   }
 
-  if (newAchievement) {
-    const ach = ACHIEVEMENTS.find(a => a.id === newAchievement);
+  if (activeEvent) {
+    const eventType = activeEvent.event.type;
+
+    if (eventType === 'power_outage' && !unlocked.includes('power_outage_survivor')) {
+      if (unlockSingleAchievement('power_outage_survivor')) {
+        newlyUnlocked.push('power_outage_survivor');
+      }
+    }
+
+    if (eventType === 'hint_failure' && state.hintsUsed === 0 && !unlocked.includes('hint_failure_overcome')) {
+      if (unlockSingleAchievement('hint_failure_overcome')) {
+        newlyUnlocked.push('hint_failure_overcome');
+      }
+    }
+
+    if (eventType === 'time_warp' && !unlocked.includes('time_warp_master')) {
+      if (unlockSingleAchievement('time_warp_master')) {
+        newlyUnlocked.push('time_warp_master');
+      }
+    }
+
+    if (eventType === 'shelf_rearrange' && !unlocked.includes('shelf_rearrange_survivor')) {
+      if (unlockSingleAchievement('shelf_rearrange_survivor')) {
+        newlyUnlocked.push('shelf_rearrange_survivor');
+      }
+    }
+  }
+
+  if (newlyUnlocked.length > 0) {
+    const ach = ACHIEVEMENTS.find(a => a.id === newlyUnlocked[0]);
     if (ach) {
       setShowAchievementPopup(ach.title);
       setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
@@ -1909,6 +1959,16 @@ export const selectBook = (bookId: string): boolean => {
     const streakResult = handleStreakOnSuccess(score);
     const totalScore = score + streakResult.streakBonus;
 
+    const activeRandomEvt = state.randomEvent.activeEvent;
+    let evtScoreAdj = 0;
+    let evtTimeAdj = 0;
+    
+    if (activeRandomEvt) {
+      const impact = calculateRandomEventImpact(activeRandomEvt.event);
+      evtScoreAdj = impact.scoreAdjustment;
+      evtTimeAdj = impact.timeAdjustment;
+    }
+
     const roundDetail: RoundDetail = {
       level: state.currentLevel,
       targetBookId: book.id,
@@ -1922,6 +1982,14 @@ export const selectBook = (bookId: string): boolean => {
       scoreEarned: totalScore,
       unlockedClueTypes,
       wrongPicks: state.currentRoundWrongPicks,
+      randomEvent: activeRandomEvt ? {
+        eventId: activeRandomEvt.event.id,
+        eventType: activeRandomEvt.event.type,
+        eventTitle: activeRandomEvt.event.title,
+        scoreAdjustment: evtScoreAdj,
+        timeAdjustment: evtTimeAdj,
+        effects: activeRandomEvt.event.effects,
+      } : undefined,
     };
 
     setLastRoundScore(score);
@@ -1976,7 +2044,9 @@ export const selectBook = (bookId: string): boolean => {
           hintsUsed: state.hintsUsed,
           consecutiveCorrect: gameState().consecutiveCorrect,
         });
+        resolveRandomEvent();
         checkAchievements();
+        checkRandomEventAchievements();
         checkStreakAchievements(newStreakCount);
         computeGameRating();
         updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
@@ -2016,7 +2086,9 @@ export const selectBook = (bookId: string): boolean => {
         hintsUsed: gameState().hintsUsed,
         consecutiveCorrect: gameState().consecutiveCorrect,
       });
+      resolveRandomEvent();
       checkAchievements();
+      checkRandomEventAchievements();
       checkStreakAchievements(newStreakCount);
       computeGameRating();
       updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
@@ -2506,11 +2578,14 @@ export const resetGame = () => {
     peekInterval = null;
   }
   clearAllTimers();
+  clearRandomEventEffects();
   setShowAchievementPopup(null);
   setShowThemeRewardPopup(null);
   setShowDailyCompletePopup(false);
   setShowRushCompletePopup(false);
   setCurrentRating(null);
+  setShowRandomEventPopup(null);
+  setLastRandomEvent(null);
   setGameState(prev => ({ ...prev, showDifficultyChange: false }));
   setGameState(initialStore);
   setCurrentClues([]);
