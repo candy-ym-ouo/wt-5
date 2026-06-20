@@ -17,6 +17,7 @@ const CLUE_TYPE_LABELS: Record<ClueType, { label: string; icon: string }> = {
   title: { label: '书名', icon: '📖' },
   shelf: { label: '书架位置', icon: '🗄️' },
   description: { label: '描述', icon: '📝' },
+  background: { label: '背景故事', icon: '✨' },
 };
 
 const PENALTY_LEVEL_COLORS = {
@@ -85,7 +86,7 @@ export default function PostGameReview(props: PostGameReviewProps) {
   });
 
   const getClueUnlockProgress = (round: RoundDetail) => {
-    const totalTypes = 6;
+    const totalTypes = 7;
     const unlocked = round.unlockedClueTypes.length;
     return `${unlocked}/${totalTypes}`;
   };

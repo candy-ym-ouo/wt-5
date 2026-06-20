@@ -12,6 +12,8 @@ export interface Book {
   width: number;
   height: number;
   description: string;
+  backgroundStory: string;
+  descriptionClues: string[];
   isTarget?: boolean;
   rarity: RarityLevel;
   themes: string[];
@@ -51,12 +53,12 @@ export interface Clue {
   id: string;
   title: string;
   content: string;
-  type: 'author' | 'year' | 'genre' | 'title' | 'shelf' | 'description';
+  type: 'author' | 'year' | 'genre' | 'title' | 'shelf' | 'description' | 'background';
   unlocked: boolean;
   order: number;
 }
 
-export type ClueType = 'author' | 'year' | 'genre' | 'title' | 'shelf' | 'description';
+export type ClueType = 'author' | 'year' | 'genre' | 'title' | 'shelf' | 'description' | 'background';
 
 export type AchievementType = 'single' | 'progressive';
 

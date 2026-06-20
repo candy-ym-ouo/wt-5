@@ -1,4 +1,4 @@
-import { onMount, onCleanup, createSignal, createEffect, createMemo } from 'solid-js';
+import { onMount, onCleanup, createSignal, createEffect, createMemo, For } from 'solid-js';
 import * as PIXI from 'pixi.js';
 import { BOOKS, SHELF_COUNT } from '../data/books';
 import { selectBookWithRarity, gameState, showWrongWarning, lastPenaltyInfo, getWrongPenaltyInfo, getThemeFilterInfo, activateThemeFilter, judgeThemeFilter } from '../store/gameStore';
@@ -396,7 +396,7 @@ export default function Bookshelf() {
           <span class="theme-filter-icon">🎭</span>
           <span class="theme-filter-title">分类提示（真伪难辨）</span>
           <span class="clue-progress-badge">
-            🔍 {themeFilterInfo().unlockedClueCount}/6 线索
+            🔍 {themeFilterInfo().unlockedClueCount}/7 线索
           </span>
         </div>
         
@@ -462,11 +462,11 @@ export default function Bookshelf() {
               <div class="progress-bar-bg">
                 <div 
                   class="progress-bar-fill"
-                  style={`width: ${Math.min(themeFilterInfo().unlockedClueCount / 2 * 100, 100)}%`}
+                  style={`width: ${Math.min(themeFilterInfo().unlockedClueCount / 3 * 100, 100)}%`}
                 />
               </div>
               <span class="progress-text">
-                {themeFilterInfo().unlockedClueCount}/2 线索解锁
+                {themeFilterInfo().unlockedClueCount}/3 线索解锁
               </span>
             </div>
           </div>
@@ -491,11 +491,43 @@ export default function Bookshelf() {
         </div>
       )}
       {hoveredBook() && (
-        <div class="book-info-popup" style="position: absolute; top: 20px; left: 20px;">
-          <div class="book-popup-title">{hoveredBook()?.title}</div>
-          <div class="book-popup-meta">作者：{hoveredBook()?.author}</div>
-          <div class="book-popup-meta">出版年份：{hoveredBook()?.year}</div>
-          <div class="book-popup-meta">分类：{hoveredBook()?.genre}</div>
+        <div class="book-info-popup book-info-popup-large" style="position: absolute; top: 20px; left: 20px;">
+          <div class="book-popup-title-row">
+            <div class="book-popup-title">{hoveredBook()?.title}</div>
+            <div class={`book-popup-rarity rarity-badge-${hoveredBook()?.rarity}`}>
+              {hoveredBook()?.rarity === 'legendary' ? '🏆 传说' :
+               hoveredBook()?.rarity === 'epic' ? '💎 史诗' :
+               hoveredBook()?.rarity === 'rare' ? '✨ 稀有' :
+               hoveredBook()?.rarity === 'uncommon' ? '📗 精良' : '📕 普通'}
+            </div>
+          </div>
+          <div class="book-popup-meta-grid">
+            <div class="book-popup-meta"><span class="meta-label">✍️ 作者</span>{hoveredBook()?.author}</div>
+            <div class="book-popup-meta"><span class="meta-label">🕰️ 年份</span>{(() => { const y = hoveredBook()?.year ?? 0; return y < 0 ? `公元前${Math.abs(y)}年` : `${y}年`; })()}</div>
+            <div class="book-popup-meta"><span class="meta-label">📚 分类</span>{hoveredBook()?.genre}</div>
+            <div class="book-popup-meta"><span class="meta-label">🪜 书架</span>第{(hoveredBook()?.shelf ?? 0) + 1}层</div>
+          </div>
+          <div class="book-popup-section">
+            <div class="popup-section-title">📖 简介</div>
+            <div class="book-popup-desc">{hoveredBook()?.description}</div>
+          </div>
+          <div class="book-popup-section">
+            <div class="popup-section-title">✨ 背景故事</div>
+            <div class="book-popup-story">{hoveredBook()?.backgroundStory}</div>
+          </div>
+          <div class="book-popup-section">
+            <div class="popup-section-title">🔍 描述线索</div>
+            <div class="book-popup-clues">
+              <For each={hoveredBook()?.descriptionClues}>
+                {(clue) => (
+                  <div class="popup-clue-item">
+                    <span class="clue-bullet">•</span>
+                    <span>{clue}</span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
         </div>
       )}
     </div>

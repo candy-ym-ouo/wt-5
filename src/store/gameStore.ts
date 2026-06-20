@@ -1,7 +1,7 @@
 import { createSignal } from 'solid-js';
 import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage } from '../types/game';
 import { BOOKS } from '../data/books';
-import { createCluesForBook, CLUE_TEMPLATES } from '../data/clues';
+import { createCluesForBook, buildClueContent } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { getChapterById, getNextChapter } from '../data/chapters';
 import {
@@ -655,7 +655,7 @@ const saveCurrentStreak = () => {
 const setupRound = (book: Book) => {
   const state = gameState();
   const config = getDifficultyConfig(state.difficultyLevel);
-  const clues = createCluesForBook(book.id);
+  const clues = createCluesForBook(book);
 
   if (config.clueUnlockOrder) {
     const orderedClues = config.clueUnlockOrder.map((type, index) => {
@@ -673,36 +673,16 @@ const setupRound = (book: Book) => {
 
     if (orderedClues.length > 0) {
       const firstClue = orderedClues[0];
-      let firstClueContent = firstClue.content;
-      switch (firstClue.type) {
-        case 'year':
-          firstClueContent = CLUE_TEMPLATES.year(book.year);
-          break;
-        case 'author':
-          firstClueContent = CLUE_TEMPLATES.author(book.author);
-          break;
-        case 'genre':
-          firstClueContent = CLUE_TEMPLATES.genre(book.genre);
-          break;
-        case 'shelf':
-          firstClueContent = CLUE_TEMPLATES.shelf(book.shelf);
-          break;
-        case 'title':
-          firstClueContent = CLUE_TEMPLATES.title(book.title);
-          break;
-        case 'description':
-          firstClueContent = CLUE_TEMPLATES.description(book.description);
-          break;
-      }
+      const firstClueContent = buildClueContent(firstClue.type, book);
       orderedClues[0] = { ...firstClue, content: firstClueContent };
       setCurrentClues(orderedClues);
     } else {
-      const firstClueContent = CLUE_TEMPLATES.year(book.year);
+      const firstClueContent = buildClueContent('year', book);
       clues[0].content = firstClueContent;
       setCurrentClues(clues);
     }
   } else {
-    const firstClueContent = CLUE_TEMPLATES.year(book.year);
+    const firstClueContent = buildClueContent('year', book);
     clues[0].content = firstClueContent;
     setCurrentClues(clues);
   }
@@ -1117,24 +1097,7 @@ export const useHint = () => {
   const book = targetBook();
   if (!book) return;
 
-  let content = lockedClue.content;
-  switch (lockedClue.type) {
-    case 'year':
-      content = CLUE_TEMPLATES.year(book.year);
-      break;
-    case 'author':
-      content = CLUE_TEMPLATES.author(book.author);
-      break;
-    case 'genre':
-      content = CLUE_TEMPLATES.genre(book.genre);
-      break;
-    case 'shelf':
-      content = CLUE_TEMPLATES.shelf(book.shelf);
-      break;
-    case 'title':
-      content = CLUE_TEMPLATES.title(book.title);
-      break;
-  }
+  const content = buildClueContent(lockedClue.type, book);
 
   setCurrentClues(prev => prev.map(c => 
     c.id === lockedClue.id ? { ...c, unlocked: true, content } : c
@@ -1149,7 +1112,7 @@ export const useHint = () => {
     unlockedClues: newUnlockedClues,
     themeFilter: {
       ...prev.themeFilter,
-      available: newUnlockedClues.length >= 2 && !prev.themeFilter.usedThisRound,
+      available: newUnlockedClues.length >= 3 && !prev.themeFilter.usedThisRound,
     },
   }));
 };
@@ -1167,24 +1130,7 @@ export const useFreeHint = () => {
   const book = targetBook();
   if (!book) return;
 
-  let content = lockedClue.content;
-  switch (lockedClue.type) {
-    case 'year':
-      content = CLUE_TEMPLATES.year(book.year);
-      break;
-    case 'author':
-      content = CLUE_TEMPLATES.author(book.author);
-      break;
-    case 'genre':
-      content = CLUE_TEMPLATES.genre(book.genre);
-      break;
-    case 'shelf':
-      content = CLUE_TEMPLATES.shelf(book.shelf);
-      break;
-    case 'title':
-      content = CLUE_TEMPLATES.title(book.title);
-      break;
-  }
+  const content = buildClueContent(lockedClue.type, book);
 
   setCurrentClues(prev => prev.map(c => 
     c.id === lockedClue.id ? { ...c, unlocked: true, content } : c
@@ -1209,7 +1155,7 @@ export const useFreeHint = () => {
     },
     themeFilter: {
       ...prev.themeFilter,
-      available: newUnlockedClues.length >= 2 && !prev.themeFilter.usedThisRound,
+      available: newUnlockedClues.length >= 3 && !prev.themeFilter.usedThisRound,
     },
   }));
 };

@@ -7,7 +7,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
     name: '入门',
     description: '适合新手，提示充足，时间充裕，扣分温和。',
     icon: '🌱',
-    initialHints: 7,
+    initialHints: 9,
     hintPenalty: 20,
     wrongPenaltyTime: 3,
     wrongPenaltyScore: 0,
@@ -17,7 +17,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
     targetBookFilter: {
       genres: ['文学', '古典', '童话', '散文'],
     },
-    clueUnlockOrder: ['year', 'genre', 'shelf', 'author', 'title'],
+    clueUnlockOrder: ['year', 'genre', 'description', 'shelf', 'background', 'author', 'title'],
     dynamicAdjustment: {
       enabled: true,
       consecutiveCorrectThreshold: 3,
@@ -30,14 +30,14 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
     name: '普通',
     description: '标准难度，平衡的挑战体验。',
     icon: '📖',
-    initialHints: 5,
+    initialHints: 7,
     hintPenalty: 50,
     wrongPenaltyTime: 5,
     wrongPenaltyScore: 50,
     gameTime: 180,
     baseScore: 1000,
     scoreMultiplier: 1.0,
-    clueUnlockOrder: ['year', 'author', 'genre', 'shelf', 'title'],
+    clueUnlockOrder: ['year', 'author', 'genre', 'description', 'shelf', 'background', 'title'],
     dynamicAdjustment: {
       enabled: true,
       consecutiveCorrectThreshold: 3,
@@ -50,7 +50,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
     name: '困难',
     description: '提示稀缺，时间紧迫，扣分严厉。',
     icon: '🔥',
-    initialHints: 3,
+    initialHints: 5,
     hintPenalty: 80,
     wrongPenaltyTime: 8,
     wrongPenaltyScore: 100,
@@ -60,7 +60,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
     targetBookFilter: {
       genres: ['哲学', '历史', '科普', '技术'],
     },
-    clueUnlockOrder: ['genre', 'year', 'shelf', 'author', 'title'],
+    clueUnlockOrder: ['genre', 'description', 'year', 'shelf', 'background', 'author', 'title'],
     dynamicAdjustment: {
       enabled: true,
       consecutiveCorrectThreshold: 4,
@@ -73,7 +73,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
     name: '专家',
     description: '极限挑战，只有真正的藏书家才能驾驭。',
     icon: '🏆',
-    initialHints: 2,
+    initialHints: 3,
     hintPenalty: 120,
     wrongPenaltyTime: 12,
     wrongPenaltyScore: 200,
@@ -83,7 +83,7 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
     targetBookFilter: {
       yearRange: [1800, 2000],
     },
-    clueUnlockOrder: ['shelf', 'year', 'genre', 'author', 'title'],
+    clueUnlockOrder: ['shelf', 'description', 'year', 'background', 'genre', 'author', 'title'],
     dynamicAdjustment: {
       enabled: true,
       consecutiveCorrectThreshold: 5,
@@ -96,14 +96,14 @@ export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
     name: '大师',
     description: '传说级难度，考验你对书籍的真正理解。',
     icon: '👑',
-    initialHints: 1,
+    initialHints: 2,
     hintPenalty: 200,
     wrongPenaltyTime: 15,
     wrongPenaltyScore: 300,
     gameTime: 90,
     baseScore: 4000,
     scoreMultiplier: 3.0,
-    clueUnlockOrder: ['description', 'year', 'genre', 'shelf', 'author'],
+    clueUnlockOrder: ['description', 'background', 'year', 'genre', 'shelf', 'author', 'title'],
     dynamicAdjustment: {
       enabled: false,
       consecutiveCorrectThreshold: 999,
@@ -207,7 +207,7 @@ export const adjustDifficulty = (
   
   const recentHints = roundStats.hintsUsedPerRound.slice(-3);
   const avgHintsUsed = recentHints.reduce((a, b) => a + b, 0) / recentHints.length;
-  const totalClues = 5;
+  const totalClues = 7;
   const hintUsageRate = avgHintsUsed / totalClues;
 
   if (roundStats.consecutiveCorrect >= consecutiveCorrectThreshold && 

@@ -4645,4 +4645,197 @@ body {
   }
 }
 
+.section-count {
+  margin-left: auto;
+  font-size: 0.8rem;
+  font-weight: normal;
+  background: rgba(139, 69, 19, 0.2);
+  padding: 2px 8px;
+  border-radius: 12px;
+  color: #d4a574;
+}
+
+.clue-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.clue-icon {
+  font-size: 1rem;
+}
+
+.clue-type-tag {
+  margin-left: auto;
+  font-size: 0.7rem;
+  background: rgba(139, 69, 19, 0.12);
+  color: #5c3a21;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: normal;
+}
+
+.locked .clue-type-tag {
+  background: rgba(0, 0, 0, 0.2);
+  color: #8B7355;
+}
+
+.clue-card.clue-type-year {
+  border-left: 3px solid #a67c00;
+}
+.clue-card.clue-type-author {
+  border-left: 3px solid #4a7c59;
+}
+.clue-card.clue-type-genre {
+  border-left: 3px solid #6b5ca5;
+}
+.clue-card.clue-type-shelf {
+  border-left: 3px solid #c06c84;
+}
+.clue-card.clue-type-description {
+  border-left: 3px solid #d97706;
+}
+.clue-card.clue-type-background {
+  border-left: 3px solid #be185d;
+  background: linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%);
+}
+.clue-card.clue-type-title {
+  border-left: 3px solid #0f766e;
+  background: linear-gradient(135deg, #ccfbf1 0%, #99f6e4 100%);
+}
+
+.book-info-popup-large {
+  max-width: 420px;
+  max-height: calc(100% - 40px);
+  overflow-y: auto;
+  padding: 18px;
+  backdrop-filter: blur(12px);
+  background: linear-gradient(135deg, rgba(45, 25, 15, 0.96) 0%, rgba(60, 35, 20, 0.96) 100%);
+  border: 1px solid rgba(212, 165, 116, 0.4);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.book-popup-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(212, 165, 116, 0.3);
+}
+
+.book-info-popup-large .book-popup-title {
+  font-size: 1.25rem;
+  margin-bottom: 0;
+  line-height: 1.3;
+}
+
+.book-popup-rarity {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.rarity-badge-legendary {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #3d2317;
+  font-weight: bold;
+}
+.rarity-badge-epic {
+  background: linear-gradient(135deg, #a78bfa, #7c3aed);
+  color: white;
+}
+.rarity-badge-rare {
+  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+  color: white;
+}
+.rarity-badge-uncommon {
+  background: linear-gradient(135deg, #34d399, #059669);
+  color: #1f2937;
+}
+.rarity-badge-common {
+  background: linear-gradient(135deg, #9ca3af, #6b7280);
+  color: white;
+}
+
+.book-popup-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+}
+
+.book-info-popup-large .book-popup-meta {
+  font-size: 0.8rem;
+  margin: 0;
+  color: #d4a574;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 0.7rem;
+  color: #8B7355;
+  opacity: 0.85;
+}
+
+.book-popup-section {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(212, 165, 116, 0.2);
+}
+
+.popup-section-title {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: #e8b989;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.book-popup-desc,
+.book-popup-story {
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: #e8d5c4;
+}
+
+.book-popup-story {
+  color: #f1c4a0;
+  font-style: italic;
+}
+
+.book-popup-clues {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.popup-clue-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: #d4c4a8;
+  padding: 6px 8px;
+  background: rgba(139, 69, 19, 0.15);
+  border-radius: 4px;
+  border-left: 2px solid #d97706;
+}
+
+.clue-bullet {
+  color: #d97706;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+
 
