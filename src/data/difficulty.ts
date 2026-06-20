@@ -1,6 +1,9 @@
 import type { DifficultyConfig, DifficultyLevel, DifficultyAdjustmentResult, Book, CollectionEntry, BookFamiliarity, FamiliarityLevel, SmartBookSelectionOptions, SmartBookSelectionResult, DailyChallenge, DailyChallengeBook } from '../types/game';
 import { BOOKS } from './books';
 import { getDateKey } from './dailyChallenge';
+import type { RarityLevel } from '../types/game';
+
+const RARITY_ORDER: RarityLevel[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 
 export const DIFFICULTY_CONFIGS: Record<DifficultyLevel, DifficultyConfig> = {
   easy: {
@@ -317,6 +320,9 @@ export const selectSmartTargetBook = (
     currentLevel = 1,
     targetFamiliarRatio = 0.4,
     genreDiversityWindow = 3,
+    genreWeights = {},
+    rarityWeights = {},
+    rareBookBonusPercent = 0,
   } = options;
 
   let availableBooks = filterBooksByDifficulty(difficultyLevel, [
@@ -345,7 +351,25 @@ export const selectSmartTargetBook = (
   const booksWithDiversityBoost = availableBooks.map(book => {
     const isNewGenre = !recentGenresSet.has(book.genre);
     const diversityBoost = isNewGenre ? 0.3 : 0;
-    return { book, diversityBoost, isNewGenre };
+
+    let decorationGenreBoost = 0;
+    if (genreWeights && genreWeights[book.genre]) {
+      decorationGenreBoost = Math.min(genreWeights[book.genre] / 100, 0.5);
+    }
+
+    let decorationRarityBoost = 0;
+    if (rarityWeights && rarityWeights[book.rarity]) {
+      decorationRarityBoost = Math.min(rarityWeights[book.rarity] / 100, 0.4);
+    }
+
+    if (rareBookBonusPercent && rareBookBonusPercent > 0) {
+      const rarityIndex = RARITY_ORDER.indexOf(book.rarity);
+      if (rarityIndex >= 2) {
+        decorationRarityBoost += Math.min((rareBookBonusPercent / 100) * (rarityIndex - 1), 0.3);
+      }
+    }
+
+    return { book, diversityBoost, isNewGenre, decorationGenreBoost, decorationRarityBoost };
   });
 
   const newGenreBooks = booksWithDiversityBoost.filter(b => b.isNewGenre);
@@ -357,11 +381,11 @@ export const selectSmartTargetBook = (
     targetFamiliarRatio
   );
 
-  const booksWithFamiliarity = booksWithDiversityBoost.map(({ book, diversityBoost, isNewGenre }) => {
+  const booksWithFamiliarity = booksWithDiversityBoost.map(({ book, diversityBoost, isNewGenre, decorationGenreBoost, decorationRarityBoost }) => {
     const familiarity = calculateBookFamiliarity(book.id, collectionEntries);
     const familiarityLevel = getFamiliarityLevel(familiarity.familiarityScore);
     
-    let score = diversityBoost;
+    let score = diversityBoost + decorationGenreBoost + decorationRarityBoost;
     
     if (shouldPreferFamiliar) {
       score += familiarity.familiarityScore * 0.5;
@@ -382,7 +406,9 @@ export const selectSmartTargetBook = (
 
   let finalCandidates = booksWithFamiliarity;
   
-  if (hasNewGenreOption && recentGenresSet.size >= 2) {
+  const hasDecorationPreference = Object.keys(genreWeights || {}).length > 0 || Object.keys(rarityWeights || {}).length > 0 || (rareBookBonusPercent && rareBookBonusPercent > 0);
+  
+  if (!hasDecorationPreference && hasNewGenreOption && recentGenresSet.size >= 2) {
     const diversityCandidates = booksWithFamiliarity.filter(b => b.isNewGenre);
     if (diversityCandidates.length >= 3) {
       finalCandidates = diversityCandidates;
@@ -396,7 +422,9 @@ export const selectSmartTargetBook = (
   const selected = topCandidates[Math.floor(Math.random() * topCandidates.length)];
 
   let reason = '';
-  if (selected.isNewGenre) {
+  if (hasDecorationPreference) {
+    reason = '根据书店装修偏好选择书籍';
+  } else if (selected.isNewGenre) {
     reason = '选择了新类型书籍，保持多样性';
   } else if (shouldPreferFamiliar) {
     reason = '选择了熟悉的书籍，巩固节奏';

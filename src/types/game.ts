@@ -670,6 +670,9 @@ export interface SmartBookSelectionOptions {
   currentLevel?: number;
   targetFamiliarRatio?: number;
   genreDiversityWindow?: number;
+  genreWeights?: Record<string, number>;
+  rarityWeights?: Record<string, number>;
+  rareBookBonusPercent?: number;
 }
 
 export interface SmartBookSelectionResult {

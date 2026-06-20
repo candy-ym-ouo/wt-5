@@ -93,6 +93,10 @@ import {
   getCalendarIntegration,
 } from './calendarStore';
 import {
+  getDecorationModifiers,
+  syncDecorationWithStore,
+} from './decorationStore';
+import {
   handleChapterComplete,
   getRestoredAreasCount,
   getRestoredSpecialBooksCount,
@@ -1405,6 +1409,9 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
   const diffMode = difficultyMode || state.difficultyMode;
   const config = getDifficultyConfig(diffLevel);
 
+  syncDecorationWithStore();
+  const decoModifiers = getDecorationModifiers();
+
   const bonusTime = getTimeBonus();
   const bonusHints = getHintBonus();
 
@@ -1419,6 +1426,9 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
     currentLevel: 1,
     targetFamiliarRatio: 0.5,
     genreDiversityWindow: 3,
+    genreWeights: decoModifiers.genreWeights,
+    rarityWeights: decoModifiers.rarityWeights,
+    rareBookBonusPercent: decoModifiers.rareBookBonus,
   });
   const book = smartSelection.book;
   setupRound(book);
@@ -1472,6 +1482,9 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
     const diffMode: DifficultyMode = 'dynamic';
     const config = getDifficultyConfig(diffLevel);
 
+    syncDecorationWithStore();
+    const decoModifiers = getDecorationModifiers();
+
     const collectionEntries = getAllCollectionEntries();
     const smartSelection = selectSmartTargetBook({
       difficultyLevel: diffLevel,
@@ -1483,6 +1496,9 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
       currentLevel: 1,
       targetFamiliarRatio: 0.3,
       genreDiversityWindow: 3,
+      genreWeights: decoModifiers.genreWeights,
+      rarityWeights: decoModifiers.rarityWeights,
+      rareBookBonusPercent: decoModifiers.rareBookBonus,
     });
     const book = smartSelection.book;
     setupRound(book);
@@ -2586,6 +2602,9 @@ export const nextRound = () => {
 
     const newConfig = getDifficultyConfig(newDifficulty);
     
+    syncDecorationWithStore();
+    const decoModifiers = getDecorationModifiers();
+
     const recentGenres = getRecentBookGenresFromHistory(state.roundDetails);
     const collectionEntries = getAllCollectionEntries();
     const smartSelection = selectSmartTargetBook({
@@ -2598,6 +2617,9 @@ export const nextRound = () => {
       currentLevel: state.currentLevel,
       targetFamiliarRatio: 0.4,
       genreDiversityWindow: 3,
+      genreWeights: decoModifiers.genreWeights,
+      rarityWeights: decoModifiers.rarityWeights,
+      rareBookBonusPercent: decoModifiers.rareBookBonus,
     });
     const book = smartSelection.book;
     setupRound(book);
@@ -3680,6 +3702,9 @@ const generateRushBooks = (difficulty: DifficultyLevel): Book[] => {
   const usedGenres: string[] = [];
   const collectionEntries = getAllCollectionEntries();
   
+  syncDecorationWithStore();
+  const decoModifiers = getDecorationModifiers();
+  
   for (let i = 0; i < 3; i++) {
     const smartSelection = selectSmartTargetBook({
       difficultyLevel: difficulty,
@@ -3691,6 +3716,9 @@ const generateRushBooks = (difficulty: DifficultyLevel): Book[] => {
       currentLevel: i + 1,
       targetFamiliarRatio: 0.3,
       genreDiversityWindow: 3,
+      genreWeights: decoModifiers.genreWeights,
+      rarityWeights: decoModifiers.rarityWeights,
+      rareBookBonusPercent: decoModifiers.rareBookBonus,
     });
     books.push(smartSelection.book);
     usedIds.push(smartSelection.book.id);

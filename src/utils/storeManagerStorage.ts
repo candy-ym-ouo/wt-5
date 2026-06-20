@@ -1,5 +1,12 @@
 import type { StoreState, CustomerPreference, ShelfArrangement, StoreTask, BusinessDay } from '../types/storeManager';
 import { CUSTOMERS, ARRANGEMENTS, DAILY_TASKS, WEEKLY_TASKS, SPECIAL_TASKS, getStoreLevel, getStoreLevelBonus } from '../data/storeManager';
+import {
+  getDecorationState,
+  getDecorationTimeModifier,
+  getDecorationHintModifier,
+  getDecorationClueSpeedModifier,
+  getDecorationRareBookBonus,
+} from './decorationStorage';
 
 export const STORE_STATE_KEY = 'old_bookstore_store_manager';
 export const STORE_DAILY_RESET_KEY = 'old_bookstore_store_daily_reset';
@@ -483,6 +490,15 @@ export const getStoreBonus = (state: StoreState) => {
     const satisfactionBonus = activeCustomer.satisfaction / 200;
     scoreMultiplier += satisfactionBonus;
     coinMultiplier += satisfactionBonus / 2;
+  }
+  
+  try {
+    const decorationState = getDecorationState();
+    timeBonus += getDecorationTimeModifier(decorationState);
+    hintsBonus += getDecorationHintModifier(decorationState);
+    clueSpeedBonus += getDecorationClueSpeedModifier(decorationState);
+    rareChanceBonus += getDecorationRareBookBonus(decorationState);
+  } catch (e) {
   }
   
   return {

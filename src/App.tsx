@@ -13,8 +13,10 @@ import TutorialGuide from './components/TutorialGuide';
 import CustomerCommissionPanel from './components/CustomerCommission';
 import CodexCenter from './components/CodexCenter';
 import DailyCalendar from './components/DailyCalendar';
+import DecorationManager from './components/DecorationManager';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
+import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
 import { getCodexStateInfo, openCodex, closeCodex } from './store/codexStore';
 import { getCalendarInfo, openCalendar, closeCalendar, getCalendarIntegration } from './store/calendarStore';
 import StoreManager from './components/StoreManager';
@@ -170,6 +172,14 @@ export default function App() {
             <div class="stat-label">🏪 店铺</div>
             <div class="stat-value">Lv.{storeLevel()}</div>
           </div>
+          <button 
+            class="stat-item decoration-button"
+            onClick={openDecorationManager}
+            title="书店装修"
+          >
+            <div class="stat-label">🎨 装修</div>
+            <div class="stat-value small-stat-value">布置</div>
+          </button>
           <button 
             class="stat-item store-manager-button"
             onClick={openStoreManager}
@@ -430,6 +440,17 @@ export default function App() {
 
       {showStoreManager() && (
         <StoreManager onClose={closeStoreManager} />
+      )}
+
+      {showDecorationManager() && (
+        <DecorationManager onClose={closeDecorationManager} />
+      )}
+
+      {showDecorationNotification() && state().state !== 'paused' && (
+        <div class="decoration-notification-popup">
+          <div class="decoration-notification-icon">🎨</div>
+          <div class="decoration-notification-text">{showDecorationNotification()}</div>
+        </div>
       )}
 
       {showRewardPopup() && state().state !== 'paused' && (

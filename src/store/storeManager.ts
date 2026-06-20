@@ -22,6 +22,10 @@ import {
 } from '../data/storeManager';
 import type { Book } from '../types/game';
 import { getThemesForBook } from '../data/themes';
+import {
+  getDecorationModifiers,
+  syncDecorationWithStore,
+} from './decorationStore';
 
 let initialState = getStoreState();
 initialState = checkAndPerformDailyReset(initialState);
@@ -105,6 +109,8 @@ export const getStoreInfo = createMemo(() => {
 export const processBookFound = (book: Book, score: number): { coinsEarned: number; reputationEarned: number; customerSatisfied: boolean } => {
   let state = ensureArrangementChecked();
   
+  syncDecorationWithStore();
+  
   const activeCustomer = state.activeCustomerId ? state.customers[state.activeCustomerId] : null;
   let customerBonus = 0;
   let customerSatisfied = false;
@@ -112,11 +118,13 @@ export const processBookFound = (book: Book, score: number): { coinsEarned: numb
   
   if (activeCustomer) {
     const bookThemes = getThemesForBook(book.id).map(t => t.id);
+    const satisfactionBonus = getDecorationModifiers().satisfactionBonus;
     const satisfactionResult = checkCustomerSatisfaction(
       activeCustomer,
       book.genre,
       book.rarity,
-      bookThemes
+      bookThemes,
+      satisfactionBonus
     );
     customerBonus = satisfactionResult.coinBonus;
     customerSatisfied = satisfactionResult.satisfied;

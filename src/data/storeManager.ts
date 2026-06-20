@@ -407,7 +407,7 @@ export const getReputationReward = (coins: number, customerSatisfied: boolean): 
   return customerSatisfied ? base * 2 : base;
 };
 
-export const checkCustomerSatisfaction = (customer: CustomerPreference, bookGenre: string, bookRarity: string, bookThemes: string[]): { satisfied: boolean; satisfactionGain: number; coinBonus: number } => {
+export const checkCustomerSatisfaction = (customer: CustomerPreference, bookGenre: string, bookRarity: string, bookThemes: string[], decorationSatisfactionBonus: number = 0): { satisfied: boolean; satisfactionGain: number; coinBonus: number } => {
   let matchScore = 0;
   
   if (customer.preferredGenres.includes(bookGenre)) {
@@ -426,8 +426,8 @@ export const checkCustomerSatisfaction = (customer: CustomerPreference, bookGenr
   }
   
   const satisfied = matchScore >= 40;
-  const satisfactionGain = satisfied ? Math.floor(matchScore / 2) : 5;
-  const coinBonus = satisfied ? matchScore : 0;
+  const satisfactionGain = satisfied ? Math.floor((matchScore + decorationSatisfactionBonus) / 2) : Math.max(5, Math.floor(decorationSatisfactionBonus / 2));
+  const coinBonus = satisfied ? matchScore + decorationSatisfactionBonus : 0;
   
   return { satisfied, satisfactionGain, coinBonus };
 };
