@@ -81,6 +81,12 @@ import {
   selectRandomEvent,
   calculateRandomEventImpact,
 } from '../data/randomEvents';
+import {
+  processBookFound,
+  getStoreBonus,
+  getTimeBonus,
+  getHintBonus,
+} from './storeManager';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -1296,6 +1302,9 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
   const diffMode = difficultyMode || state.difficultyMode;
   const config = getDifficultyConfig(diffLevel);
 
+  const bonusTime = getTimeBonus();
+  const bonusHints = getHintBonus();
+
   const collectionEntries = getAllCollectionEntries();
   const smartSelection = selectSmartTargetBook({
     difficultyLevel: diffLevel,
@@ -1320,8 +1329,8 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: config.gameTime,
-    hintsRemaining: config.initialHints,
+    timeRemaining: config.gameTime + bonusTime,
+    hintsRemaining: config.initialHints + bonusHints,
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: book.id,
@@ -1968,7 +1977,7 @@ export const selectBook = (bookId: string): boolean => {
     
     const powerUpPenalty = calculatePowerUpPenalty(state.powerUps.powerUpsUsedThisRound);
     
-    const score = calculateScoreWithDifficulty(
+    const baseScore = calculateScoreWithDifficulty(
       config.baseScore,
       state.timeRemaining,
       state.hintsUsed,
@@ -1976,6 +1985,11 @@ export const selectBook = (bookId: string): boolean => {
       findTime,
       powerUpPenalty
     );
+
+    const storeBonus = getStoreBonus();
+    const score = Math.floor(baseScore * storeBonus.scoreMultiplier);
+
+    processBookFound(book, score);
 
     const newFoundGenres = [...foundGenres(), book.genre];
     setFoundGenres(newFoundGenres);
@@ -2452,7 +2466,10 @@ export const nextRound = () => {
     const streakTimeBonus = streakReward?.bonusTime || 0;
     const streakHintBonus = streakReward?.bonusHints || 0;
     
-    const totalTimeBonus = roundCompletionBonus + timeBonus + streakTimeBonus;
+    const storeTimeBonus = getTimeBonus();
+    const storeHintBonus = getHintBonus();
+    
+    const totalTimeBonus = roundCompletionBonus + timeBonus + streakTimeBonus + storeTimeBonus;
 
     if (peekInterval) {
       clearInterval(peekInterval);
@@ -2465,7 +2482,7 @@ export const nextRound = () => {
       currentLevel: prev.currentLevel + 1,
       targetBookId: book.id,
       unlockedClues: [currentClues()[0]?.id || ''],
-      hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus, newConfig.initialHints + streakHintBonus),
+      hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus + storeHintBonus, newConfig.initialHints + streakHintBonus + storeHintBonus),
       hintsUsed: 0,
       difficultyLevel: newDifficulty,
       difficultyHistory: newHistory,

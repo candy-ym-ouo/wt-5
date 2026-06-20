@@ -11,6 +11,8 @@ import ChapterProgress from './components/ChapterProgress';
 import StreakDisplay from './components/StreakDisplay';
 import TutorialGuide from './components/TutorialGuide';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount } from './store/gameStore';
+import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
+import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
 
@@ -38,6 +40,8 @@ export default function App() {
   const isDailyMode = createMemo(() => isDailyChallengeMode());
   const rushInfo = createMemo(() => getRushInfo());
   const isRushGameMode = createMemo(() => isRushMode());
+  const coins = createMemo(() => getCoins());
+  const storeLevel = createMemo(() => getStoreLevel());
 
   return (
     <div class="game-container">
@@ -131,6 +135,22 @@ export default function App() {
           >
             <div class="stat-label">🏆 排行</div>
             <div class="stat-value small-stat-value">查看</div>
+          </button>
+          <div class="stat-item coins-stat">
+            <div class="stat-label">🪙 金币</div>
+            <div class="stat-value">{coins()}</div>
+          </div>
+          <div class="stat-item store-level-stat">
+            <div class="stat-label">🏪 店铺</div>
+            <div class="stat-value">Lv.{storeLevel()}</div>
+          </div>
+          <button 
+            class="stat-item store-manager-button"
+            onClick={openStoreManager}
+            title="店长经营"
+          >
+            <div class="stat-label">👔 店长</div>
+            <div class="stat-value small-stat-value">经营</div>
           </button>
         </div>
       </header>
@@ -353,6 +373,38 @@ export default function App() {
 
       {showCollection() && (
         <BookCollection onClose={() => setShowCollection(false)} />
+      )}
+
+      {showStoreManager() && (
+        <StoreManager onClose={closeStoreManager} />
+      )}
+
+      {showRewardPopup() && state().state !== 'paused' && (
+        <div class="store-reward-popup">
+          <div class="store-reward-popup-title">🎁 获得奖励</div>
+          <div class="store-reward-popup-content">
+            {showRewardPopup()!.coins > 0 && (
+              <div class="reward-item">
+                <span class="reward-icon">🪙</span>
+                <span class="reward-text">+{showRewardPopup()!.coins} 金币</span>
+              </div>
+            )}
+            {showRewardPopup()!.reputation > 0 && (
+              <div class="reward-item">
+                <span class="reward-icon">⭐</span>
+                <span class="reward-text">+{showRewardPopup()!.reputation} 声望</span>
+              </div>
+            )}
+            <div class="reward-description">{showRewardPopup()!.description}</div>
+          </div>
+        </div>
+      )}
+
+      {showTaskCompletePopup() && state().state !== 'paused' && (
+        <div class="task-complete-popup">
+          <div class="task-complete-popup-title">✅ 任务完成</div>
+          <div class="task-complete-popup-name">{showTaskCompletePopup()}</div>
+        </div>
       )}
 
       <TutorialGuide onClose={() => {}} />
