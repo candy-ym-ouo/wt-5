@@ -49,6 +49,9 @@ import {
   markDailyCompleted,
   getDailyLeaderboard,
   saveDailyLeaderboardEntry,
+  updateCollectionEntry,
+  getUnlockedCollectionCount,
+  getAllCollectionEntries,
 } from '../utils/storage';
 import { THEMES, getThemeById, selectBookByTheme, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
 import {
@@ -185,6 +188,7 @@ export const [lastRushStageBonus, setLastRushStageBonus] = createSignal(0);
 export const [lastRushTimeBonus, setLastRushTimeBonus] = createSignal(0);
 export const [showRushCompletePopup, setShowRushCompletePopup] = createSignal(false);
 export const [currentRating, setCurrentRating] = createSignal<RatingResult | null>(null);
+export const [collectionCount, setCollectionCount] = createSignal(getUnlockedCollectionCount());
 
 let timerInterval: number | null = null;
 
@@ -561,6 +565,23 @@ export const checkAchievements = () => {
       !unlocked.includes('purist')) {
     if (unlockSingleAchievement('purist')) {
       newAchievement = 'purist';
+    }
+  }
+
+  const colCount = getUnlockedCollectionCount();
+  const collectorResult = updateProgressiveAchievement('collector', colCount);
+  if (collectorResult.newStages.length > 0 && !unlocked.includes('collector')) {
+    const newUnlocked = [...state.unlockedAchievements, 'collector'];
+    setGameState(prev => ({ ...prev, unlockedAchievements: newUnlocked }));
+    saveUnlockedAchievements(newUnlocked);
+    if (!newAchievement) newAchievement = 'collector';
+  }
+
+  const allColEntries = getAllCollectionEntries();
+  const collectedGenres = new Set(BOOKS.filter(b => allColEntries[b.id]).map(b => b.genre));
+  if (collectedGenres.size >= 5 && !unlocked.includes('genre_master')) {
+    if (unlockSingleAchievement('genre_master')) {
+      if (!newAchievement) newAchievement = 'genre_master';
     }
   }
 
@@ -1623,6 +1644,8 @@ export const selectBook = (bookId: string): boolean => {
         checkAchievements();
         checkStreakAchievements(newStreakCount);
         computeGameRating();
+        updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+        setCollectionCount(getUnlockedCollectionCount());
 
         if (nextTaskIndex >= tasks.length) {
           setTimeout(completeChapter, 500);
@@ -1661,6 +1684,8 @@ export const selectBook = (bookId: string): boolean => {
       checkAchievements();
       checkStreakAchievements(newStreakCount);
       computeGameRating();
+      updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      setCollectionCount(getUnlockedCollectionCount());
     }
     return true;
   } else {

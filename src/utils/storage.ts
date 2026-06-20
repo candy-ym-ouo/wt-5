@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress, DailyChallengeScore, DailyChallengeProgress } from '../types/game';
+import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress, DailyChallengeScore, DailyChallengeProgress, CollectionEntry } from '../types/game';
 import { ACHIEVEMENTS } from '../data/achievements';
 
 export const LEADERBOARD_KEY = 'old_bookstore_leaderboard';
@@ -18,6 +18,7 @@ export const GAME_REPLAY_KEY = 'old_bookstore_replays';
 export const LAST_GAME_REPLAY_KEY = 'old_bookstore_last_replay';
 export const DAILY_CHALLENGE_LEADERBOARD_KEY = 'old_bookstore_daily_leaderboard';
 export const DAILY_CHALLENGE_PROGRESS_KEY = 'old_bookstore_daily_progress';
+export const COLLECTION_KEY = 'old_bookstore_collection';
 
 const CURRENT_STORAGE_VERSION = 4;
 
@@ -787,4 +788,76 @@ export function getDailyBestScore(dateKey?: string): number {
 export function hasCompletedDailyChallenge(dateKey?: string): boolean {
   const progress = getDailyProgress(dateKey);
   return progress?.completed || false;
+}
+
+export function getAllCollectionEntries(): Record<string, CollectionEntry> {
+  try {
+    const data = localStorage.getItem(COLLECTION_KEY);
+    return data ? JSON.parse(data) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getCollectionEntry(bookId: string): CollectionEntry | null {
+  const all = getAllCollectionEntries();
+  return all[bookId] || null;
+}
+
+export function updateCollectionEntry(
+  bookId: string,
+  score: number,
+  findTime: number,
+  hintsUsed: number
+): CollectionEntry {
+  const all = getAllCollectionEntries();
+  const existing = all[bookId];
+  const now = Date.now();
+
+  const entry: CollectionEntry = existing
+    ? {
+        ...existing,
+        bestScore: Math.max(existing.bestScore, score),
+        bestScoreDate: score > existing.bestScore ? now : existing.bestScoreDate,
+        fastestFind: findTime < existing.fastestFind || existing.fastestFind === 0 ? findTime : existing.fastestFind,
+        fastestFindDate: (findTime < existing.fastestFind || existing.fastestFind === 0) ? now : existing.fastestFindDate,
+        fewestHints: hintsUsed < existing.fewestHints ? hintsUsed : existing.fewestHints,
+        fewestHintsDate: hintsUsed < existing.fewestHints ? now : existing.fewestHintsDate,
+        totalTimesFound: existing.totalTimesFound + 1,
+        relatedAchievements: existing.relatedAchievements,
+      }
+    : {
+        bookId,
+        firstFoundAt: now,
+        bestScore: score,
+        bestScoreDate: now,
+        fastestFind: findTime,
+        fastestFindDate: now,
+        fewestHints: hintsUsed,
+        fewestHintsDate: now,
+        totalTimesFound: 1,
+        relatedAchievements: [],
+      };
+
+  all[bookId] = entry;
+  localStorage.setItem(COLLECTION_KEY, JSON.stringify(all));
+  return entry;
+}
+
+export function getUnlockedCollectionCount(): number {
+  return Object.keys(getAllCollectionEntries()).length;
+}
+
+export function isBookCollected(bookId: string): boolean {
+  return !!getAllCollectionEntries()[bookId];
+}
+
+export function addCollectionAchievement(bookId: string, achievementId: string): void {
+  const all = getAllCollectionEntries();
+  const entry = all[bookId];
+  if (entry && !entry.relatedAchievements.includes(achievementId)) {
+    entry.relatedAchievements = [...entry.relatedAchievements, achievementId];
+    all[bookId] = entry;
+    localStorage.setItem(COLLECTION_KEY, JSON.stringify(all));
+  }
 }

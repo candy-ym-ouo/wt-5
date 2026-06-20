@@ -6,14 +6,16 @@ import AchievementList from './components/AchievementList';
 import Timer from './components/Timer';
 import GameModal from './components/GameModal';
 import Leaderboard from './components/Leaderboard';
+import BookCollection from './components/BookCollection';
 import ChapterProgress from './components/ChapterProgress';
 import StreakDisplay from './components/StreakDisplay';
-import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode } from './store/gameStore';
+import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount } from './store/gameStore';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
 
 export default function App() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
+  const [showCollection, setShowCollection] = createSignal(false);
   const state = createMemo(() => gameState());
   const diffInfo = createMemo(() => getDifficultyInfo());
   const isPlaying = createMemo(() => state().state === 'playing');
@@ -113,6 +115,14 @@ export default function App() {
               <div class="stat-value small-stat-value">暂停</div>
             </button>
           )}
+          <button 
+            class="stat-item collection-button"
+            onClick={() => setShowCollection(true)}
+            title="查看收藏册"
+          >
+            <div class="stat-label">📖 收藏</div>
+            <div class="stat-value small-stat-value">{collectionCount()}</div>
+          </button>
           <button 
             class="stat-item rank-button"
             onClick={() => setShowLeaderboard(true)}
@@ -338,6 +348,10 @@ export default function App() {
 
       {showLeaderboard() && (
         <Leaderboard onClose={() => setShowLeaderboard(false)} />
+      )}
+
+      {showCollection() && (
+        <BookCollection onClose={() => setShowCollection(false)} />
       )}
     </div>
   );

@@ -546,3 +546,18 @@ export interface RatingInput {
   difficultyLevel: DifficultyLevel;
   completed: boolean;
 }
+
+export interface CollectionEntry {
+  bookId: string;
+  firstFoundAt: number;
+  bestScore: number;
+  bestScoreDate: number;
+  fastestFind: number;
+  fastestFindDate: number;
+  fewestHints: number;
+  fewestHintsDate: number;
+  totalTimesFound: number;
+  relatedAchievements: string[];
+}
+
+export type CollectionCategory = 'all' | '文学' | '古典' | '科普' | '技术' | '历史' | '哲学' | '科幻' | '散文' | '童话';

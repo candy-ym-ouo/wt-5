@@ -34,9 +34,11 @@ import {
   lastRushStageBonus,
   lastRushTimeBonus,
   currentRating,
+  collectionCount,
 } from '../store/gameStore';
 import { getGradeInfo } from '../data/rating';
 import Leaderboard from './Leaderboard';
+import BookCollection from './BookCollection';
 import ChapterSelect from './ChapterSelect';
 import ThemeSelect from './ThemeSelect';
 import { getNextChapter } from '../data/chapters';
@@ -54,6 +56,7 @@ export default function GameModal() {
   const [selectedDifficulty, setSelectedDifficulty] = createSignal<DifficultyLevel>('normal');
   const [difficultyMode, setDifficultyMode] = createSignal<DifficultyMode>('dynamic');
   const [showStreakInherit, setShowStreakInherit] = createSignal(false);
+  const [showCollection, setShowCollection] = createSignal(false);
   
   const state = createMemo(() => gameState());
   const book = createMemo(() => targetBook());
@@ -243,9 +246,15 @@ export default function GameModal() {
             <button class="modal-button secondary" onClick={() => setShowLeaderboard(true)}>
               🏆 排行榜
             </button>
+            <button class="modal-button secondary" onClick={() => setShowCollection(true)}>
+              📖 收藏册 ({collectionCount()})
+            </button>
           </div>
           {showLeaderboard() && (
             <Leaderboard onClose={() => setShowLeaderboard(false)} />
+          )}
+          {showCollection() && (
+            <BookCollection onClose={() => setShowCollection(false)} />
           )}
         </div>
       )}
