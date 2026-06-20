@@ -48,6 +48,7 @@ import { RARITY_CONFIG } from '../data/themes';
 import { isNewPersonalBest, getPersonalBestRank, getPersonalBest, getCurrentSeason, getCurrentWeekNumber, getDailyProgress, hasCompletedDailyChallenge } from '../utils/storage';
 import { getStreakTitle, STREAK_INHERIT_COST } from '../data/streaks';
 import { generateDailyChallenge, getTodayDateKey } from '../data/dailyChallenge';
+import StoryMode from './StoryMode';
 
 export default function GameModal() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
@@ -58,6 +59,7 @@ export default function GameModal() {
   const [difficultyMode, setDifficultyMode] = createSignal<DifficultyMode>('dynamic');
   const [showStreakInherit, setShowStreakInherit] = createSignal(false);
   const [showCollection, setShowCollection] = createSignal(false);
+  const [showStoryMode, setShowStoryMode] = createSignal(false);
   
   const state = createMemo(() => gameState());
   const book = createMemo(() => targetBook());
@@ -206,6 +208,9 @@ export default function GameModal() {
             </div>
 
             <div class="mode-buttons">
+              <button class="modal-button story-btn" onClick={() => setShowStoryMode(true)}>
+                🏚️ 剧情模式
+              </button>
               <button class="modal-button" onClick={() => setShowDifficultySelect(true)}>
                 🎮 经典模式
               </button>
@@ -465,6 +470,19 @@ export default function GameModal() {
 
       {showThemeSelect() && gameStatus() === 'idle' && (
         <ThemeSelect onBack={() => setShowThemeSelect(false)} />
+      )}
+
+      {showStoryMode() && gameStatus() === 'idle' && (
+        <StoryMode
+          onBack={() => setShowStoryMode(false)}
+          onStartChapter={(chapterId) => {
+            resetGame();
+            setShowStoryMode(false);
+            setTimeout(() => {
+              startChapterGame(chapterId);
+            }, 100);
+          }}
+        />
       )}
 
       {gameStatus() === 'won' && (
