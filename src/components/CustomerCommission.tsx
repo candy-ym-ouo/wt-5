@@ -1,6 +1,5 @@
 import { createMemo, Component } from 'solid-js';
-import { getCommissionInfo, isCommissionMode, getAverageSatisfaction, completeCommission, acceptNextCommission, dismissCommissionResultPopup, showCommissionResultPopup } from '../store/gameStore';
-import { BOOKS } from '../data/books';
+import { getCommissionInfo, isCommissionMode, getAverageSatisfaction, acceptNextCommission, dismissCommissionResultPopup, showCommissionResultPopup } from '../store/gameStore';
 
 const getEraColor = (era: string): string => {
   const colors: Record<string, string> = {
@@ -38,11 +37,6 @@ const CustomerCommissionPanel: Component = () => {
   const commission = info().activeCommission;
   const lastResult = info().lastResult;
   const timePct = commission ? (info().timeRemaining / commission.timeLimit) * 100 : 0;
-
-  const handleBookClick = (bookId: string) => {
-    if (!commission) return;
-    completeCommission(bookId);
-  };
 
   return (
     <>
@@ -112,34 +106,9 @@ const CustomerCommissionPanel: Component = () => {
                 )}
               </div>
 
-              <div class="quick-book-suggestions">
-                <div class="suggestions-label">📚 可能匹配的书籍（点击确认）：</div>
-                <div class="suggestions-grid">
-                  {commission.targetBookIds.slice(0, 6).map(bookId => {
-                    const book = BOOKS.find(b => b.id === bookId);
-                    if (!book) return null;
-                    return (
-                      <button
-                        class="book-suggestion-btn"
-                        onClick={() => handleBookClick(bookId)}
-                        title={`${book.title} - ${book.author}`}
-                      >
-                        <div 
-                          class="book-spine-mini"
-                          style={{ 
-                            background: book.color,
-                            width: `${book.width * 0.8}px`,
-                            height: `${book.height * 0.4}px`
-                          }}
-                        />
-                        <div class="book-suggestion-info">
-                          <div class="suggestion-title">{book.title}</div>
-                          <div class="suggestion-year">{book.year}年</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
+              <div class="commission-hint-box">
+                <div class="hint-icon">🔍</div>
+                <div class="hint-text">请在真实书架中寻找符合顾客需求的书籍，点击书籍封面来完成委托！</div>
               </div>
             </div>
           </div>

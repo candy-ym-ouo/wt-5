@@ -110,7 +110,7 @@ export default function App() {
           {hasActiveStreak() && isClassicMode() && (
             <StreakDisplay compact />
           )}
-          {currentBook() && isPlaying() && (
+          {currentBook() && isPlaying() && !isCommMode() && (
             <div class="stat-item rarity-stat">
               <div class="stat-label">📚 稀有度</div>
               <div class="stat-value" style={{ color: RARITY_CONFIG[currentBook()!.rarity].color }}>
@@ -316,24 +316,26 @@ export default function App() {
             <CustomerCommissionPanel />
           )}
 
-          <div class="sidebar-section">
-            <div class="section-title">
-              <span>🔍</span>
-              <span>当前任务</span>
+          {!isCommMode() && (
+            <div class="sidebar-section">
+              <div class="section-title">
+                <span>🔍</span>
+                <span>当前任务</span>
+              </div>
+              <div class="current-task-card">
+                {isPlaying() ? (
+                  <>
+                    <div class="task-title">找到神秘藏书</div>
+                    <div class="task-desc">根据右侧线索，在书架上找到目标书籍</div>
+                  </>
+                ) : (
+                  <div class="task-idle">开始游戏接受挑战</div>
+                )}
+              </div>
             </div>
-            <div class="current-task-card">
-              {isPlaying() ? (
-                <>
-                  <div class="task-title">找到神秘藏书</div>
-                  <div class="task-desc">根据右侧线索，在书架上找到目标书籍</div>
-                </>
-              ) : (
-                <div class="task-idle">开始游戏接受挑战</div>
-              )}
-            </div>
-          </div>
+          )}
 
-          {isPlaying() && (
+          {isPlaying() && !isCommMode() && (
             <>
               <ClueCards />
               <HintSystem />

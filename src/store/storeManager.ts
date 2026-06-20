@@ -252,3 +252,18 @@ export const getCoins = (): number => {
 export const getStoreLevel = (): number => {
   return storeState().storeLevel;
 };
+
+export const awardCommissionRewards = (coins: number, reputation: number, bookTitle: string): void => {
+  let state = storeState();
+  state = addCoins(state, coins);
+  state = addReputation(state, reputation);
+  state = updateTaskProgress(state, 'earn_coins', coins);
+  persistState(state);
+  
+  setShowRewardPopup({
+    coins,
+    reputation,
+    description: `完成顾客委托 - 《${bookTitle}》`,
+  });
+  setTimeout(() => setShowRewardPopup(null), 2500);
+};

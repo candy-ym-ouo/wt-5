@@ -86,6 +86,7 @@ import {
   getStoreBonus,
   getTimeBonus,
   getHintBonus,
+  awardCommissionRewards,
 } from './storeManager';
 import {
   handleChapterComplete,
@@ -3153,6 +3154,11 @@ export const selectBookWithRarity = (bookId: string): boolean => {
   const state = gameState();
   if (state.state !== 'playing') return false;
 
+  if (state.gameMode === 'commission' as any) {
+    completeCommission(bookId);
+    return true;
+  }
+
   if (state.powerUps.eliminatedBookIds.includes(bookId)) {
     return false;
   }
@@ -3306,9 +3312,6 @@ export const selectBookWithRarity = (bookId: string): boolean => {
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
-    } else if (state.gameMode === 'commission' as any) {
-      completeCommission(bookId);
-      return true;
     } else if (state.gameMode === 'rush') {
       completeRushStage(bookId, findTime);
 
@@ -4228,10 +4231,8 @@ export const startCommissionGame = () => {
   const commission = generateCommission();
   commission.status = 'active';
   
-  const targetBook = BOOKS.find(b => commission.targetBookIds.includes(b.id));
-  if (!targetBook) return;
-  
-  setupRound(targetBook);
+  setCurrentClues([]);
+  setTargetBook(null);
   setFoundGenres([]);
   setGameStartTime(Date.now());
 
@@ -4248,8 +4249,8 @@ export const startCommissionGame = () => {
     hintsRemaining: config.initialHints,
     hintsUsed: 0,
     currentLevel: 1,
-    targetBookId: targetBook.id,
-    unlockedClues: [currentClues()[0]?.id || ''],
+    targetBookId: null,
+    unlockedClues: [],
     foundBooks: [],
     consecutiveCorrect: 0,
     gameMode: 'commission' as any,
@@ -4342,11 +4343,13 @@ export const completeCommission = (bookId: string) => {
     rewardReputation: matchResult.isMatch ? rewards.reputation : 0,
   };
 
-  if (matchResult.isMatch) {
-    const bookObj = BOOKS.find(b => b.id === bookId);
-    if (bookObj) {
-      processBookFound(bookObj, satisfaction);
-    }
+  const bookObj = BOOKS.find(b => b.id === bookId);
+  if (bookObj) {
+    awardCommissionRewards(
+      updatedCommission.rewardCoins,
+      updatedCommission.rewardReputation,
+      bookObj.title
+    );
   }
 
   setGameState(prev => ({
@@ -4464,16 +4467,14 @@ const generateAndStartNextCommission = () => {
   const newCommission = generateCommission();
   newCommission.status = 'active';
   
-  const targetBook = BOOKS.find(b => newCommission.targetBookIds.includes(b.id));
-  if (!targetBook) return;
-  
-  setupRound(targetBook);
+  setCurrentClues([]);
+  setTargetBook(null);
   setCommissionTimeRemaining(newCommission.timeLimit);
   
   setGameState(prev => ({
     ...prev,
-    targetBookId: targetBook.id,
-    unlockedClues: [currentClues()[0]?.id || ''],
+    targetBookId: null,
+    unlockedClues: [],
     currentLevel: prev.currentLevel + 1,
     commission: {
       ...prev.commission,

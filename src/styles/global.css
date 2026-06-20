@@ -8383,67 +8383,26 @@ body {
   background: linear-gradient(135deg, #48bb78, #38a169);
 }
 
-.quick-book-suggestions {
-  margin-top: 8px;
-}
-
-.suggestions-label {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #a0896c;
-  margin-bottom: 8px;
-}
-
-.suggestions-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-}
-
-.book-suggestion-btn {
+.commission-hint-box {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(205, 133, 63, 0.2);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  background: linear-gradient(135deg, rgba(205, 133, 63, 0.1), rgba(184, 115, 51, 0.05));
+  border: 1px dashed rgba(205, 133, 63, 0.4);
+  border-radius: 10px;
+  margin-top: 12px;
 }
 
-.book-suggestion-btn:hover {
-  background: rgba(205, 133, 63, 0.15);
-  border-color: rgba(205, 133, 63, 0.5);
-  transform: translateY(-1px);
-}
-
-.book-spine-mini {
-  border-radius: 2px;
+.hint-icon {
+  font-size: 1.3rem;
   flex-shrink: 0;
-  box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-.book-suggestion-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  overflow: hidden;
-}
-
-.suggestion-title {
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: #e0d5c1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.suggestion-year {
-  font-size: 0.68rem;
-  color: #8b7355;
+.hint-text {
+  font-size: 0.82rem;
+  color: #d4c4a8;
+  line-height: 1.6;
 }
 
 .commission-stats {
