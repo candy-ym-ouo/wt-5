@@ -22,7 +22,6 @@ import {
 import {
   getUnlockedAchievements,
   saveUnlockedAchievements,
-  getAllAchievementProgress,
   saveAllAchievementProgress,
   incrementGamesPlayed,
   getGamesPlayed,
@@ -31,7 +30,7 @@ import {
   getCurrentChapterId,
   setCurrentChapterId,
   updatePersonalBest,
-  runMigrations,
+  runExtendedMigrations,
   isNewPersonalBest,
   getPersonalBest,
   getWeeklyLeaderboard,
@@ -60,6 +59,12 @@ import {
   addSeenEventTypes,
   getTotalEventsTriggered,
   incrementTotalEventsTriggered,
+  safeGetAllAchievementProgress,
+  safeGetPersonalBest,
+  safeGetLeaderboard,
+  getStorageVersionInfo,
+  repairAndRestore,
+  sanitizeAllStorage,
 } from '../utils/storage';
 import { THEMES, getThemeById, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
 import {
@@ -188,7 +193,7 @@ export const [gameStartTime, setGameStartTime] = createSignal(0);
 export const [lastRoundScore, setLastRoundScore] = createSignal(0);
 export const [lastRoundStreakBonus, setLastRoundStreakBonus] = createSignal(0);
 
-runMigrations();
+runExtendedMigrations();
 export const [gamesPlayed, setGamesPlayed] = createSignal(getGamesPlayed());
 export const [currentTask, setCurrentTask] = createSignal<ChapterTask | null>(null);
 export const [chapterTasks, setChapterTasks] = createSignal<ChapterTask[]>([]);
@@ -197,7 +202,7 @@ export const [showThemeRewardPopup, setShowThemeRewardPopup] = createSignal<stri
 export const [themeHintsUsed, setThemeHintsUsed] = createSignal(0);
 export const [showWrongWarning, setShowWrongWarning] = createSignal<PenaltyLevel | null>(null);
 export const [lastPenaltyInfo, setLastPenaltyInfo] = createSignal<WrongPenaltyEvent | null>(null);
-export const [achievementProgress, setAchievementProgress] = createSignal<Record<string, AchievementProgress>>(getAllAchievementProgress());
+export const [achievementProgress, setAchievementProgress] = createSignal<Record<string, AchievementProgress>>(safeGetAllAchievementProgress());
 export const [themeFilterResult, setThemeFilterResult] = createSignal<ThemeFilterResult | null>(null);
 export const [showThemeFilterHint, setShowThemeFilterHint] = createSignal(false);
 export const [dailyChallenge, setDailyChallenge] = createSignal<DailyChallenge | null>(null);
@@ -3836,3 +3841,26 @@ export const restartRushGame = () => {
     startRushGame(diffLevel, diffMode);
   }, 50);
 };
+
+export const getDataVersionInfo = () => getStorageVersionInfo();
+
+export const repairStorage = (): boolean => {
+  const success = repairAndRestore();
+  if (success) {
+    setAchievementProgress(safeGetAllAchievementProgress());
+    setCollectionCount(getUnlockedCollectionCount());
+  }
+  return success;
+};
+
+export const validateAndCleanStorage = () => {
+  return sanitizeAllStorage({ removeInvalid: true, fillDefaults: true, backupBefore: true });
+};
+
+export const refreshAchievementProgress = () => {
+  setAchievementProgress(safeGetAllAchievementProgress());
+};
+
+export const getSafeLeaderboard = () => safeGetLeaderboard();
+
+export const getSafePersonalBest = () => safeGetPersonalBest();

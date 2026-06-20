@@ -1,5 +1,6 @@
 import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress, DailyChallengeScore, DailyChallengeProgress, CollectionEntry } from '../types/game';
 import { ACHIEVEMENTS } from '../data/achievements';
+import { BOOKS } from '../data/books';
 
 export const LEADERBOARD_KEY = 'old_bookstore_leaderboard';
 export const ACHIEVEMENTS_KEY = 'old_bookstore_achievements';
@@ -936,4 +937,854 @@ export function resetTutorial(): void {
     localStorage.removeItem(TUTORIAL_COMPLETED_KEY);
     localStorage.removeItem(TUTORIAL_STEP_KEY);
   } catch {}
+}
+
+// ============================================================================
+// 存档版本升级机制 - 核心实现
+// ============================================================================
+
+export const STORAGE_BACKUP_PREFIX = 'old_bookstore_backup_';
+export const STORAGE_METADATA_KEY = 'old_bookstore_storage_metadata';
+
+const CURRENT_STORAGE_VERSION_EXTENDED = 5;
+
+export interface StorageMetadata {
+  version: number;
+  lastMigratedAt: number;
+  lastCleanedAt: number;
+  backupVersion: number;
+  corruptionCount: number;
+  lastCorruptionAt?: number;
+}
+
+export interface MigrationRecord {
+  fromVersion: number;
+  toVersion: number;
+  migrate: () => void;
+  description: string;
+}
+
+export interface DataValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  fixed: boolean;
+}
+
+export interface SanitizeOptions {
+  removeInvalid?: boolean;
+  fillDefaults?: boolean;
+  backupBefore?: boolean;
+}
+
+interface StorageBackup {
+  version: number;
+  timestamp: number;
+  data: Record<string, string>;
+}
+
+const migrationRegistry: MigrationRecord[] = [];
+
+function registerMigration(
+  fromVersion: number,
+  toVersion: number,
+  migrate: () => void,
+  description: string
+): void {
+  migrationRegistry.push({ fromVersion, toVersion, migrate, description });
+  migrationRegistry.sort((a, b) => a.fromVersion - b.fromVersion);
+}
+
+function getStorageMetadata(): StorageMetadata {
+  try {
+    const data = localStorage.getItem(STORAGE_METADATA_KEY);
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch {}
+  return {
+    version: 1,
+    lastMigratedAt: 0,
+    lastCleanedAt: 0,
+    backupVersion: 0,
+    corruptionCount: 0,
+  };
+}
+
+function saveStorageMetadata(metadata: StorageMetadata): void {
+  try {
+    localStorage.setItem(STORAGE_METADATA_KEY, JSON.stringify(metadata));
+  } catch {}
+}
+
+function createBackup(version: number): void {
+  try {
+    const metadata = getStorageMetadata();
+    const backupData: Record<string, string> = {};
+    
+    const allKeys = Object.values({
+      LEADERBOARD_KEY, ACHIEVEMENTS_KEY, ACHIEVEMENTS_PROGRESS_KEY,
+      GAME_STATS_KEY, CHAPTER_PROGRESS_KEY, CURRENT_CHAPTER_KEY,
+      SEASON_KEY, PERSONAL_BEST_KEY, THEME_PROGRESS_KEY, THEME_REWARDS_KEY,
+      CURRENT_THEME_KEY, STREAK_KEY, GAME_REPLAY_KEY, LAST_GAME_REPLAY_KEY,
+      DAILY_CHALLENGE_LEADERBOARD_KEY, DAILY_CHALLENGE_PROGRESS_KEY,
+      COLLECTION_KEY, SEEN_EVENT_TYPES_KEY, TOTAL_EVENTS_TRIGGERED_KEY,
+      TUTORIAL_COMPLETED_KEY, TUTORIAL_STEP_KEY,
+    });
+
+    for (const key of allKeys) {
+      const value = localStorage.getItem(key);
+      if (value !== null) {
+        backupData[key] = value;
+      }
+    }
+
+    const backup: StorageBackup = {
+      version,
+      timestamp: Date.now(),
+      data: backupData,
+    };
+
+    const backupKey = `${STORAGE_BACKUP_PREFIX}${metadata.backupVersion + 1}`;
+    localStorage.setItem(backupKey, JSON.stringify(backup));
+
+    metadata.backupVersion += 1;
+    const maxBackups = 3;
+    if (metadata.backupVersion > maxBackups) {
+      const oldBackupKey = `${STORAGE_BACKUP_PREFIX}${metadata.backupVersion - maxBackups}`;
+      localStorage.removeItem(oldBackupKey);
+    }
+
+    saveStorageMetadata(metadata);
+  } catch {}
+}
+
+function restoreFromBackup(backupVersion?: number): boolean {
+  try {
+    const metadata = getStorageMetadata();
+    const targetVersion = backupVersion ?? metadata.backupVersion;
+    
+    if (targetVersion <= 0) return false;
+
+    const backupKey = `${STORAGE_BACKUP_PREFIX}${targetVersion}`;
+    const backupData = localStorage.getItem(backupKey);
+    
+    if (!backupData) return false;
+
+    const backup: StorageBackup = JSON.parse(backupData);
+    
+    for (const [key, value] of Object.entries(backup.data)) {
+      localStorage.setItem(key, value);
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
+  const result = { ...target } as T;
+  for (const key in source) {
+    if (source[key] !== undefined) {
+      if (
+        typeof source[key] === 'object' &&
+        source[key] !== null &&
+        !Array.isArray(source[key]) &&
+        typeof target[key] === 'object' &&
+        target[key] !== null &&
+        !Array.isArray(target[key])
+      ) {
+        result[key] = deepMerge(target[key] as Record<string, any>, source[key] as Record<string, any>) as T[Extract<keyof T, string>];
+      } else {
+        result[key] = source[key] as T[Extract<keyof T, string>];
+      }
+    }
+  }
+  return result;
+}
+
+function getDefaultPersonalBest(): PersonalBest {
+  return {
+    highestScore: 0,
+    highestScoreDate: 0,
+    totalGamesPlayed: 0,
+    totalBooksFound: 0,
+    fastestFind: 0,
+    fastestFindDate: 0,
+    fewestHintsScore: 0,
+    fewestHintsDate: 0,
+    fewestHintsCount: -1,
+    longestStreak: 0,
+    longestStreakDate: 0,
+    weeklyBestScores: {},
+    seasonBestScores: {},
+  };
+}
+
+function getDefaultAchievementProgress(achievementId: string): AchievementProgress {
+  return {
+    achievementId,
+    currentProgress: 0,
+    unlockedStages: [],
+    stageUnlockTimes: {},
+  };
+}
+
+
+
+function validateLeaderboardEntry(entry: unknown): { valid: boolean; entry?: LeaderboardEntry } {
+  if (!entry || typeof entry !== 'object') return { valid: false };
+  
+  const e = entry as Record<string, unknown>;
+  
+  if (typeof e.score !== 'number' || e.score < 0) return { valid: false };
+  if (typeof e.date !== 'number' || e.date <= 0) return { valid: false };
+  if (typeof e.id !== 'string' || e.id.length === 0) return { valid: false };
+  
+  const validEntry: LeaderboardEntry = {
+    id: e.id,
+    playerName: typeof e.playerName === 'string' ? e.playerName : '匿名玩家',
+    score: e.score,
+    timeUsed: typeof e.timeUsed === 'number' ? Math.max(0, e.timeUsed) : 0,
+    hintsUsed: typeof e.hintsUsed === 'number' ? Math.max(0, e.hintsUsed) : 0,
+    date: e.date,
+    seasonId: typeof e.seasonId === 'string' ? e.seasonId : undefined,
+    weekNumber: typeof e.weekNumber === 'number' ? e.weekNumber : undefined,
+    difficulty: typeof e.difficulty === 'string' ? e.difficulty as any : undefined,
+    streak: typeof e.streak === 'number' ? Math.max(0, e.streak) : undefined,
+    bestStreak: typeof e.bestStreak === 'number' ? Math.max(0, e.bestStreak) : undefined,
+    replayId: typeof e.replayId === 'string' ? e.replayId : undefined,
+  };
+
+  return { valid: true, entry: validEntry };
+}
+
+function validateAchievementProgress(progress: unknown, achievementId: string): { valid: boolean; progress?: AchievementProgress } {
+  if (!progress || typeof progress !== 'object') return { valid: false };
+  
+  const p = progress as Record<string, unknown>;
+  
+  const validProgress: AchievementProgress = {
+    achievementId,
+    currentProgress: typeof p.currentProgress === 'number' ? Math.max(0, p.currentProgress) : 0,
+    unlockedStages: Array.isArray(p.unlockedStages) ? p.unlockedStages.filter(s => typeof s === 'string') : [],
+    unlockedAt: typeof p.unlockedAt === 'number' ? p.unlockedAt : undefined,
+    completedAt: typeof p.completedAt === 'number' ? p.completedAt : undefined,
+    stageUnlockTimes: typeof p.stageUnlockTimes === 'object' && p.stageUnlockTimes !== null
+      ? p.stageUnlockTimes as Record<string, number>
+      : {},
+  };
+
+  return { valid: true, progress: validProgress };
+}
+
+function validatePersonalBest(pb: unknown): { valid: boolean; pb?: PersonalBest } {
+  if (!pb || typeof pb !== 'object') {
+    return { valid: true, pb: getDefaultPersonalBest() };
+  }
+  
+  const p = pb as Record<string, unknown>;
+  const defaultPb = getDefaultPersonalBest();
+  
+  const validPb: PersonalBest = {
+    highestScore: typeof p.highestScore === 'number' ? Math.max(0, p.highestScore) : defaultPb.highestScore,
+    highestScoreDate: typeof p.highestScoreDate === 'number' ? Math.max(0, p.highestScoreDate) : defaultPb.highestScoreDate,
+    totalGamesPlayed: typeof p.totalGamesPlayed === 'number' ? Math.max(0, p.totalGamesPlayed) : defaultPb.totalGamesPlayed,
+    totalBooksFound: typeof p.totalBooksFound === 'number' ? Math.max(0, p.totalBooksFound) : defaultPb.totalBooksFound,
+    fastestFind: typeof p.fastestFind === 'number' ? Math.max(0, p.fastestFind) : defaultPb.fastestFind,
+    fastestFindDate: typeof p.fastestFindDate === 'number' ? Math.max(0, p.fastestFindDate) : defaultPb.fastestFindDate,
+    fewestHintsScore: typeof p.fewestHintsScore === 'number' ? Math.max(0, p.fewestHintsScore) : defaultPb.fewestHintsScore,
+    fewestHintsDate: typeof p.fewestHintsDate === 'number' ? Math.max(0, p.fewestHintsDate) : defaultPb.fewestHintsDate,
+    fewestHintsCount: typeof p.fewestHintsCount === 'number' ? p.fewestHintsCount : defaultPb.fewestHintsCount,
+    longestStreak: typeof p.longestStreak === 'number' ? Math.max(0, p.longestStreak) : defaultPb.longestStreak,
+    longestStreakDate: typeof p.longestStreakDate === 'number' ? Math.max(0, p.longestStreakDate) : defaultPb.longestStreakDate,
+    weeklyBestScores: typeof p.weeklyBestScores === 'object' && p.weeklyBestScores !== null
+      ? p.weeklyBestScores as Record<number, number>
+      : defaultPb.weeklyBestScores,
+    seasonBestScores: typeof p.seasonBestScores === 'object' && p.seasonBestScores !== null
+      ? p.seasonBestScores as Record<string, number>
+      : defaultPb.seasonBestScores,
+  };
+
+  return { valid: true, pb: validPb };
+}
+
+export function sanitizeLeaderboard(options: SanitizeOptions = {}): DataValidationResult {
+  const result: DataValidationResult = {
+    valid: true,
+    errors: [],
+    warnings: [],
+    fixed: false,
+  };
+
+  try {
+    const data = localStorage.getItem(LEADERBOARD_KEY);
+    if (!data) return result;
+
+    if (options.backupBefore) {
+      createBackup(CURRENT_STORAGE_VERSION);
+    }
+
+    const entries = JSON.parse(data);
+    if (!Array.isArray(entries)) {
+      result.errors.push('排行榜数据格式错误：不是数组');
+      if (options.removeInvalid) {
+        localStorage.setItem(LEADERBOARD_KEY, JSON.stringify([]));
+        result.fixed = true;
+      }
+      return result;
+    }
+
+    const validEntries: LeaderboardEntry[] = [];
+    const seenIds = new Set<string>();
+
+    for (let i = 0; i < entries.length; i++) {
+      const validation = validateLeaderboardEntry(entries[i]);
+      if (validation.valid && validation.entry) {
+        if (!seenIds.has(validation.entry.id)) {
+          seenIds.add(validation.entry.id);
+          validEntries.push(validation.entry);
+        } else {
+          result.warnings.push(`排行榜条目 ${i} 存在重复 ID，已跳过`);
+        }
+      } else {
+        result.errors.push(`排行榜条目 ${i} 无效，已${options.removeInvalid ? '移除' : '保留'}`);
+        result.valid = false;
+      }
+    }
+
+    validEntries.sort((a, b) => b.score - a.score);
+    const topFifty = validEntries.slice(0, 50);
+
+    if (options.removeInvalid && (result.errors.length > 0 || validEntries.length !== entries.length)) {
+      localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(topFifty));
+      result.fixed = true;
+    }
+  } catch (e) {
+    result.errors.push(`排行榜数据解析失败：${e}`);
+    result.valid = false;
+    if (options.removeInvalid) {
+      localStorage.setItem(LEADERBOARD_KEY, JSON.stringify([]));
+      result.fixed = true;
+    }
+  }
+
+  return result;
+}
+
+export function sanitizeAchievements(options: SanitizeOptions = {}): DataValidationResult {
+  const result: DataValidationResult = {
+    valid: true,
+    errors: [],
+    warnings: [],
+    fixed: false,
+  };
+
+  try {
+    const validAchievementIds = new Set(ACHIEVEMENTS.map(a => a.id));
+
+    const unlockedData = localStorage.getItem(ACHIEVEMENTS_KEY);
+    if (unlockedData) {
+      const unlocked = JSON.parse(unlockedData);
+      if (Array.isArray(unlocked)) {
+        const validUnlocked = unlocked.filter(id => {
+          if (typeof id !== 'string') {
+            result.warnings.push(`无效的成就ID类型：${typeof id}`);
+            return false;
+          }
+          if (!validAchievementIds.has(id)) {
+            result.warnings.push(`未知的成就ID：${id}`);
+            return options.removeInvalid ? false : true;
+          }
+          return true;
+        });
+        if (options.removeInvalid && validUnlocked.length !== unlocked.length) {
+          localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(validUnlocked));
+          result.fixed = true;
+        }
+      } else {
+        result.errors.push('已解锁成就数据格式错误');
+        if (options.removeInvalid) {
+          localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify([]));
+          result.fixed = true;
+        }
+      }
+    }
+
+    const progressData = localStorage.getItem(ACHIEVEMENTS_PROGRESS_KEY);
+    if (progressData) {
+      const progress = JSON.parse(progressData);
+      if (typeof progress === 'object' && progress !== null) {
+        const sanitizedProgress: Record<string, AchievementProgress> = {};
+        
+        for (const [id, prog] of Object.entries(progress)) {
+          if (!validAchievementIds.has(id)) {
+            result.warnings.push(`成就进度包含未知ID：${id}`);
+            if (!options.removeInvalid) {
+              const validation = validateAchievementProgress(prog, id);
+              if (validation.valid && validation.progress) {
+                sanitizedProgress[id] = validation.progress;
+              }
+            }
+            continue;
+          }
+
+          const validation = validateAchievementProgress(prog, id);
+          if (validation.valid && validation.progress) {
+            sanitizedProgress[id] = validation.progress;
+          } else {
+            result.errors.push(`成就 ${id} 进度无效，已${options.fillDefaults ? '重置' : '保留'}`);
+            if (options.fillDefaults) {
+              sanitizedProgress[id] = getDefaultAchievementProgress(id);
+            }
+          }
+        }
+
+        if (options.fillDefaults || options.removeInvalid) {
+          localStorage.setItem(ACHIEVEMENTS_PROGRESS_KEY, JSON.stringify(sanitizedProgress));
+          result.fixed = true;
+        }
+      } else {
+        result.errors.push('成就进度数据格式错误');
+        if (options.removeInvalid) {
+          localStorage.setItem(ACHIEVEMENTS_PROGRESS_KEY, JSON.stringify({}));
+          result.fixed = true;
+        }
+      }
+    }
+  } catch (e) {
+    result.errors.push(`成就数据解析失败：${e}`);
+    result.valid = false;
+  }
+
+  return result;
+}
+
+export function sanitizePersonalBest(options: SanitizeOptions = {}): DataValidationResult {
+  const result: DataValidationResult = {
+    valid: true,
+    errors: [],
+    warnings: [],
+    fixed: false,
+  };
+
+  try {
+    const data = localStorage.getItem(PERSONAL_BEST_KEY);
+    if (!data) {
+      if (options.fillDefaults) {
+        localStorage.setItem(PERSONAL_BEST_KEY, JSON.stringify(getDefaultPersonalBest()));
+        result.fixed = true;
+      }
+      return result;
+    }
+
+    const pb = JSON.parse(data);
+    const validation = validatePersonalBest(pb);
+    
+    if (validation.valid && validation.pb) {
+      if (options.fillDefaults) {
+        localStorage.setItem(PERSONAL_BEST_KEY, JSON.stringify(validation.pb));
+        result.fixed = true;
+      }
+    } else {
+      result.errors.push('个人最佳数据无效');
+      result.valid = false;
+      if (options.removeInvalid) {
+        localStorage.setItem(PERSONAL_BEST_KEY, JSON.stringify(getDefaultPersonalBest()));
+        result.fixed = true;
+      }
+    }
+  } catch (e) {
+    result.errors.push(`个人最佳数据解析失败：${e}`);
+    result.valid = false;
+    if (options.removeInvalid) {
+      localStorage.setItem(PERSONAL_BEST_KEY, JSON.stringify(getDefaultPersonalBest()));
+      result.fixed = true;
+    }
+  }
+
+  return result;
+}
+
+export function sanitizeCollection(options: SanitizeOptions = {}): DataValidationResult {
+  const result: DataValidationResult = {
+    valid: true,
+    errors: [],
+    warnings: [],
+    fixed: false,
+  };
+
+  try {
+    const data = localStorage.getItem(COLLECTION_KEY);
+    if (!data) return result;
+
+    const collection = JSON.parse(data);
+    if (typeof collection !== 'object' || collection === null) {
+      result.errors.push('收藏数据格式错误');
+      if (options.removeInvalid) {
+        localStorage.setItem(COLLECTION_KEY, JSON.stringify({}));
+        result.fixed = true;
+      }
+      return result;
+    }
+
+    const validBookIds = new Set(BOOKS.map(b => b.id));
+    const sanitized: Record<string, CollectionEntry> = {};
+
+    for (const [bookId, entry] of Object.entries(collection)) {
+      if (!validBookIds.has(bookId)) {
+        result.warnings.push(`收藏包含未知书籍ID：${bookId}`);
+        if (!options.removeInvalid) {
+          sanitized[bookId] = entry as CollectionEntry;
+        }
+        continue;
+      }
+
+      if (!entry || typeof entry !== 'object') {
+        result.errors.push(`收藏条目 ${bookId} 无效`);
+        if (options.removeInvalid) continue;
+      }
+
+      sanitized[bookId] = entry as CollectionEntry;
+    }
+
+    if (options.removeInvalid && Object.keys(sanitized).length !== Object.keys(collection).length) {
+      localStorage.setItem(COLLECTION_KEY, JSON.stringify(sanitized));
+      result.fixed = true;
+    }
+  } catch (e) {
+    result.errors.push(`收藏数据解析失败：${e}`);
+    result.valid = false;
+    if (options.removeInvalid) {
+      localStorage.setItem(COLLECTION_KEY, JSON.stringify({}));
+      result.fixed = true;
+    }
+  }
+
+  return result;
+}
+
+export function sanitizeDailyChallenge(options: SanitizeOptions = {}): DataValidationResult {
+  const result: DataValidationResult = {
+    valid: true,
+    errors: [],
+    warnings: [],
+    fixed: false,
+  };
+
+  const maxRetentionDays = 30;
+  const cutoffTime = Date.now() - maxRetentionDays * 24 * 60 * 60 * 1000;
+
+  try {
+    const leaderboardData = localStorage.getItem(DAILY_CHALLENGE_LEADERBOARD_KEY);
+    if (leaderboardData) {
+      const leaderboard = JSON.parse(leaderboardData);
+      if (typeof leaderboard === 'object' && leaderboard !== null) {
+        const sanitized: Record<string, DailyChallengeScore[]> = {};
+        let cleaned = false;
+
+        for (const [dateKey, entries] of Object.entries(leaderboard)) {
+          const dateParts = dateKey.split('-').map(Number);
+          if (dateParts.length !== 3) {
+            result.warnings.push(`无效的日期键：${dateKey}`);
+            cleaned = true;
+            continue;
+          }
+
+          const entryDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]).getTime();
+          if (entryDate < cutoffTime) {
+            result.warnings.push(`清理过期的每日排行榜：${dateKey}`);
+            cleaned = true;
+            continue;
+          }
+
+          if (Array.isArray(entries)) {
+            sanitized[dateKey] = entries.filter(e => {
+              if (!e || typeof e !== 'object') return false;
+              if (typeof e.score !== 'number' || e.score < 0) return false;
+              return true;
+            }).slice(0, 50);
+          }
+        }
+
+        if (cleaned || options.removeInvalid) {
+          localStorage.setItem(DAILY_CHALLENGE_LEADERBOARD_KEY, JSON.stringify(sanitized));
+          result.fixed = true;
+        }
+      }
+    }
+
+    const progressData = localStorage.getItem(DAILY_CHALLENGE_PROGRESS_KEY);
+    if (progressData) {
+      const progress = JSON.parse(progressData);
+      if (typeof progress === 'object' && progress !== null) {
+        const sanitized: Record<string, DailyChallengeProgress> = {};
+        let cleaned = false;
+
+        for (const [dateKey, entry] of Object.entries(progress)) {
+          const dateParts = dateKey.split('-').map(Number);
+          if (dateParts.length !== 3) {
+            cleaned = true;
+            continue;
+          }
+
+          const entryDate = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]).getTime();
+          if (entryDate < cutoffTime) {
+            cleaned = true;
+            continue;
+          }
+
+          sanitized[dateKey] = entry as DailyChallengeProgress;
+        }
+
+        if (cleaned || options.removeInvalid) {
+          localStorage.setItem(DAILY_CHALLENGE_PROGRESS_KEY, JSON.stringify(sanitized));
+          result.fixed = true;
+        }
+      }
+    }
+  } catch (e) {
+    result.errors.push(`每日挑战数据解析失败：${e}`);
+    result.valid = false;
+  }
+
+  return result;
+}
+
+export function sanitizeAllStorage(options: SanitizeOptions = {}): Record<string, DataValidationResult> {
+  const results: Record<string, DataValidationResult> = {};
+
+  if (options.backupBefore) {
+    createBackup(CURRENT_STORAGE_VERSION);
+  }
+
+  results.leaderboard = sanitizeLeaderboard(options);
+  results.achievements = sanitizeAchievements(options);
+  results.personalBest = sanitizePersonalBest(options);
+  results.collection = sanitizeCollection(options);
+  results.dailyChallenge = sanitizeDailyChallenge(options);
+
+  const metadata = getStorageMetadata();
+  metadata.lastCleanedAt = Date.now();
+  saveStorageMetadata(metadata);
+
+  return results;
+}
+
+function detectCorruption(): boolean {
+  try {
+    const testKeys = [LEADERBOARD_KEY, ACHIEVEMENTS_KEY, PERSONAL_BEST_KEY];
+    
+    for (const key of testKeys) {
+      const data = localStorage.getItem(key);
+      if (data !== null) {
+        try {
+          JSON.parse(data);
+        } catch {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function handleCorruption(): void {
+  const metadata = getStorageMetadata();
+  metadata.corruptionCount += 1;
+  metadata.lastCorruptionAt = Date.now();
+  saveStorageMetadata(metadata);
+
+  if (metadata.backupVersion > 0) {
+    restoreFromBackup();
+  }
+}
+
+function migrateFromV4ToV5(): void {
+  try {
+    sanitizeLeaderboard({ removeInvalid: true, fillDefaults: true });
+    sanitizeAchievements({ fillDefaults: true, removeInvalid: true });
+    sanitizePersonalBest({ fillDefaults: true });
+    
+    const existingProgress = getAllAchievementProgress();
+    const allProgress: Record<string, AchievementProgress> = {};
+
+    for (const achievement of ACHIEVEMENTS) {
+      if (existingProgress[achievement.id]) {
+        allProgress[achievement.id] = existingProgress[achievement.id];
+      } else if (achievement.type === 'progressive') {
+        allProgress[achievement.id] = getDefaultAchievementProgress(achievement.id);
+      }
+    }
+
+    saveAllAchievementProgress(allProgress);
+
+    const pb = getPersonalBest();
+    const updatedPb = deepMerge(getDefaultPersonalBest(), pb);
+    localStorage.setItem(PERSONAL_BEST_KEY, JSON.stringify(updatedPb));
+  } catch {}
+}
+
+registerMigration(1, 2, migrateFromV1ToV2, '添加赛季和周榜支持');
+registerMigration(3, 4, migrateFromV3ToV4, '重构成就系统，添加进度追踪');
+registerMigration(4, 5, migrateFromV4ToV5, '添加数据验证和字段扩展兼容');
+
+export function runExtendedMigrations(): void {
+  try {
+    if (detectCorruption()) {
+      handleCorruption();
+    }
+
+    const metadata = getStorageMetadata();
+    const currentVersion = metadata.version;
+    const targetVersion = CURRENT_STORAGE_VERSION_EXTENDED;
+
+    if (currentVersion < targetVersion) {
+      createBackup(currentVersion);
+    }
+
+    const migrationsToRun = migrationRegistry.filter(
+      m => m.fromVersion >= currentVersion && m.toVersion <= targetVersion
+    );
+
+    for (const migration of migrationsToRun) {
+      try {
+        migration.migrate();
+      } catch (e) {
+        console.error(`迁移失败 (v${migration.fromVersion}->v${migration.toVersion}):`, e);
+      }
+    }
+
+    metadata.version = targetVersion;
+    metadata.lastMigratedAt = Date.now();
+    saveStorageMetadata(metadata);
+
+    const oneWeek = 7 * 24 * 60 * 60 * 1000;
+    if (Date.now() - metadata.lastCleanedAt > oneWeek) {
+      sanitizeAllStorage({ removeInvalid: true, fillDefaults: true });
+    }
+  } catch (e) {
+    console.error('版本迁移执行失败:', e);
+  }
+}
+
+export function getStorageVersionInfo(): { current: number; latest: number; needsUpgrade: boolean } {
+  const metadata = getStorageMetadata();
+  return {
+    current: metadata.version,
+    latest: CURRENT_STORAGE_VERSION_EXTENDED,
+    needsUpgrade: metadata.version < CURRENT_STORAGE_VERSION_EXTENDED,
+  };
+}
+
+export function repairAndRestore(): boolean {
+  try {
+    createBackup(getStorageMetadata().version);
+    
+    sanitizeAllStorage({ removeInvalid: true, fillDefaults: true, backupBefore: false });
+    
+    if (detectCorruption()) {
+      return restoreFromBackup();
+    }
+    
+    return true;
+  } catch {
+    return restoreFromBackup();
+  }
+}
+
+export function exportAllData(): string {
+  const data: Record<string, any> = {
+    metadata: getStorageMetadata(),
+    exportedAt: Date.now(),
+    version: CURRENT_STORAGE_VERSION_EXTENDED,
+    storage: {},
+  };
+
+  const allKeys = Object.values({
+    LEADERBOARD_KEY, ACHIEVEMENTS_KEY, ACHIEVEMENTS_PROGRESS_KEY,
+    GAME_STATS_KEY, CHAPTER_PROGRESS_KEY, CURRENT_CHAPTER_KEY,
+    SEASON_KEY, PERSONAL_BEST_KEY, THEME_PROGRESS_KEY, THEME_REWARDS_KEY,
+    CURRENT_THEME_KEY, STREAK_KEY, GAME_REPLAY_KEY, LAST_GAME_REPLAY_KEY,
+    DAILY_CHALLENGE_LEADERBOARD_KEY, DAILY_CHALLENGE_PROGRESS_KEY,
+    COLLECTION_KEY, SEEN_EVENT_TYPES_KEY, TOTAL_EVENTS_TRIGGERED_KEY,
+    TUTORIAL_COMPLETED_KEY, TUTORIAL_STEP_KEY,
+  });
+
+  for (const key of allKeys) {
+    const value = localStorage.getItem(key);
+    if (value !== null) {
+      try {
+        data.storage[key] = JSON.parse(value);
+      } catch {
+        data.storage[key] = value;
+      }
+    }
+  }
+
+  return JSON.stringify(data, null, 2);
+}
+
+export function importData(jsonString: string): boolean {
+  try {
+    const data = JSON.parse(jsonString);
+    if (!data.storage || typeof data.storage !== 'object') {
+      return false;
+    }
+
+    createBackup(getStorageMetadata().version);
+
+    for (const [key, value] of Object.entries(data.storage)) {
+      if (typeof value === 'string') {
+        localStorage.setItem(key, value);
+      } else {
+        localStorage.setItem(key, JSON.stringify(value));
+      }
+    }
+
+    sanitizeAllStorage({ removeInvalid: true, fillDefaults: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function safeGetLeaderboard(): LeaderboardEntry[] {
+  try {
+    const result = sanitizeLeaderboard({ removeInvalid: true, fillDefaults: true });
+    if (result.valid || result.fixed) {
+      return getLeaderboard();
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export function safeGetAllAchievementProgress(): Record<string, AchievementProgress> {
+  try {
+    const result = sanitizeAchievements({ fillDefaults: true });
+    if (result.valid || result.fixed) {
+      return getAllAchievementProgress();
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+export function safeGetPersonalBest(): PersonalBest {
+  try {
+    const result = sanitizePersonalBest({ fillDefaults: true });
+    if (result.valid || result.fixed) {
+      return getPersonalBest();
+    }
+    return getDefaultPersonalBest();
+  } catch {
+    return getDefaultPersonalBest();
+  }
 }
