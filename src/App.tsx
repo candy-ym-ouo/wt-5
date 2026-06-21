@@ -20,7 +20,9 @@ import BookRepairWorkshop from './components/BookRepairWorkshop';
 import ThemeCollectionCenter from './components/ThemeCollectionCenter';
 import SettlementCenter from './components/SettlementCenter';
 import TouringExhibitionCenter from './components/TouringExhibitionCenter';
+import TrainingCenter from './components/TrainingCenter';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo, isThemeCollectionMode, getThemeCollectionInfo } from './store/gameStore';
+import { openTrainingCenter, getTrainingCenterState, closeTrainingCenter } from './store/trainingStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
 import { getCodexStateInfo, openCodex, closeCodex } from './store/codexStore';
@@ -299,6 +301,14 @@ export default function App() {
             <div class="stat-value small-stat-value">
               {charPanelInfo().availableDialogueCount > 0 ? `💬${charPanelInfo().availableDialogueCount}` : '互动'}
             </div>
+          </button>
+          <button 
+            class="stat-item training-button"
+            onClick={() => openTrainingCenter()}
+            title="教学与练习中心"
+          >
+            <div class="stat-label">🎓 教学</div>
+            <div class="stat-value small-stat-value">练习</div>
           </button>
           <button 
             class="stat-item account-button"
@@ -758,6 +768,10 @@ export default function App() {
           </div>
           <div class="reward-description">{exhibitionRewardPopup()?.description}</div>
         </div>
+      )}
+
+      {getTrainingCenterState().isVisible && (
+        <TrainingCenter onClose={closeTrainingCenter} />
       )}
     </div>
   );

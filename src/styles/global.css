@@ -1,3 +1,6 @@
+@import './components.css';
+@import './training.css';
+
 * {
   margin: 0;
   padding: 0;
