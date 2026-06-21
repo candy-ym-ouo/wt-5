@@ -18,6 +18,7 @@ import AccountProfile from './components/AccountProfile';
 import ActivityCenter from './components/ActivityCenter';
 import BookRepairWorkshop from './components/BookRepairWorkshop';
 import ThemeCollectionCenter from './components/ThemeCollectionCenter';
+import SettlementCenter from './components/SettlementCenter';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo, isThemeCollectionMode, getThemeCollectionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
@@ -483,6 +484,7 @@ export default function App() {
       </main>
 
       <GameModal />
+      <SettlementCenter />
 
       {showAchievementPopup() && state().state !== 'paused' && (
         <div class="achievement-popup">

@@ -136,6 +136,7 @@ import {
   getActivityIntegrationBonuses,
 } from './activityStore';
 import { getUnlockedCharacterBookIds, updateCharacterSideQuestProgress, checkCharacterAchievements, awardCharacterAchievementReward } from './characterStore';
+import { showSettlementCenter } from './settlementStore';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -1191,6 +1192,10 @@ const startTimer = () => {
           checkRandomEventAchievements();
           saveCurrentStreak();
           computeGameRating();
+          
+          setTimeout(() => {
+            triggerGameSettlement();
+          }, 300);
         }, 0);
         return { ...prev, timeRemaining: 0, state: 'lost' };
       }
@@ -2000,6 +2005,10 @@ const completeChapter = () => {
       }, 500);
     }
   }
+  
+  setTimeout(() => {
+    triggerGameSettlement();
+  }, 300);
 };
 
 const calculatePenaltyForConsecutiveWrong = (
@@ -2339,6 +2348,10 @@ export const selectBook = (bookId: string): boolean => {
       recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
       setCollectionCount(getUnlockedCollectionCount());
       triggerQuestProgressOnBookFound(book, findTime, state);
+      
+      setTimeout(() => {
+        triggerGameSettlement();
+      }, 300);
     }
     return true;
   } else {
@@ -2424,7 +2437,6 @@ const handleStreakOnFail = () => {
 
 export const generateGameReplay = (playerName?: string): GameReplayData | null => {
   const state = gameState();
-  if (state.gameMode !== 'classic') return null;
   if (state.roundDetails.length === 0) return null;
 
   const config = getDifficultyConfig(state.difficultyLevel);
@@ -2846,6 +2858,22 @@ export const computeGameRating = (): RatingResult | null => {
   }
 
   return rating;
+};
+
+export const triggerGameSettlement = async (): Promise<void> => {
+  const state = gameState();
+  
+  if (state.roundDetails.length === 0) return;
+  
+  const replay = generateGameReplay();
+  if (!replay) return;
+  
+  const isWin = state.state === 'won' || state.state === 'chapter_complete';
+  const isPersonalBest = isNewPersonalBest(state.score).score;
+  const rank = state.score > 0 ? getPersonalBestRank(state.score) : undefined;
+  const rating = currentRating()?.grade;
+  
+  await showSettlementCenter(replay, isWin, isPersonalBest, rank, rating);
 };
 
 export const awardActivityPowerUps = (freeHints: number, timePeeks: number, eliminateWrongs: number): void => {
