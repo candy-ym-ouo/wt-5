@@ -26,7 +26,10 @@ import { showAccountModal, closeAccountModal, openAccountModal, currentNickname,
 import { openActivityCenter, closeActivityCenter, activityRewardPopup, dismissActivityRewardPopup, getActivityInfo } from './store/activityStore';
 import { openWorkshop, closeWorkshop, getWorkshopStateInfo, showWorkshop } from './store/workshopStore';
 import { openQuestPanel, closeQuestPanel, getQuestPanelInfo, getUnclaimedQuestCount, dismissQuestPopup } from './store/questStore';
+import { openCharacterPanel, closeCharacterPanel, getCharacterPanelInfo, characterState, dismissRelationshipPopup, dismissBooklistUnlockPopup, dismissAchievementUnlockPopup, dismissQuestUnlockPopup } from './store/characterStore';
+import { RELATIONSHIP_THRESHOLDS, RELATIONSHIP_LEVEL_ICONS } from './types/character';
 import QuestPanel from './components/QuestPanel';
+import CharacterPanel from './components/CharacterPanel';
 import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
@@ -65,6 +68,7 @@ export default function App() {
   const activityInfo = createMemo(() => getActivityInfo());
   const questPanelInfo = createMemo(() => getQuestPanelInfo());
   const questUnclaimed = createMemo(() => getUnclaimedQuestCount());
+  const charPanelInfo = createMemo(() => getCharacterPanelInfo());
   const [showCalendar, setShowCalendar] = createSignal(false);
   const [showQuests, setShowQuests] = createSignal(false);
 
@@ -252,6 +256,16 @@ export default function App() {
             <div class="stat-label">📋 任务</div>
             <div class="stat-value small-stat-value">
               {questUnclaimed() > 0 ? `🎁${questUnclaimed()}` : '查看'}
+            </div>
+          </button>
+          <button
+            class="stat-item character-button-header"
+            onClick={() => openCharacterPanel()}
+            title="角色关系"
+          >
+            <div class="stat-label">💬 角色</div>
+            <div class="stat-value small-stat-value">
+              {charPanelInfo().availableDialogueCount > 0 ? `💬${charPanelInfo().availableDialogueCount}` : '互动'}
             </div>
           </button>
           <button 
@@ -609,6 +623,61 @@ export default function App() {
         <div class="quest-complete-notification" onClick={() => dismissQuestPopup()}>
           <div class="quest-complete-notification-title">🎉 任务完成</div>
           <div class="quest-complete-notification-name">{questPanelInfo().showCompletePopup}</div>
+        </div>
+      )}
+
+      {charPanelInfo().isVisible && (
+        <CharacterPanel onClose={closeCharacterPanel} />
+      )}
+
+      {characterState().showRelationshipPopup && state().state !== 'paused' && (
+        <div class="relationship-popup" onClick={() => dismissRelationshipPopup()}>
+          <div style={{ 'font-size': '2rem', 'margin-bottom': '8px' }}>
+            {RELATIONSHIP_LEVEL_ICONS[characterState().showRelationshipPopup!.newLevel] || '💕'}
+          </div>
+          <div style={{ color: '#ffd700', 'font-weight': 'bold', 'font-size': '1.1rem' }}>
+            关系升级！
+          </div>
+          <div style={{ color: '#f5e6d3', 'font-size': '0.9rem', 'margin-top': '4px' }}>
+            与{characterState().showRelationshipPopup!.characterId}的关系提升至
+            {RELATIONSHIP_THRESHOLDS[characterState().showRelationshipPopup!.newLevel]?.label || characterState().showRelationshipPopup!.newLevel}
+          </div>
+        </div>
+      )}
+
+      {characterState().showBooklistUnlockPopup && state().state !== 'paused' && (
+        <div class="relationship-popup" onClick={() => dismissBooklistUnlockPopup()}>
+          <div style={{ 'font-size': '2rem', 'margin-bottom': '8px' }}>📚</div>
+          <div style={{ color: '#ffd700', 'font-weight': 'bold', 'font-size': '1.1rem' }}>
+            专属书单解锁！
+          </div>
+          <div style={{ color: '#f5e6d3', 'font-size': '0.9rem', 'margin-top': '4px' }}>
+            新的专属书单已开启
+          </div>
+        </div>
+      )}
+
+      {characterState().showAchievementUnlockPopup && state().state !== 'paused' && (
+        <div class="relationship-popup" onClick={() => dismissAchievementUnlockPopup()}>
+          <div style={{ 'font-size': '2rem', 'margin-bottom': '8px' }}>🏅</div>
+          <div style={{ color: '#ffd700', 'font-weight': 'bold', 'font-size': '1.1rem' }}>
+            特殊成就解锁！
+          </div>
+          <div style={{ color: '#f5e6d3', 'font-size': '0.9rem', 'margin-top': '4px' }}>
+            你获得了一个角色专属成就
+          </div>
+        </div>
+      )}
+
+      {characterState().showQuestUnlockPopup && state().state !== 'paused' && (
+        <div class="relationship-popup" onClick={() => dismissQuestUnlockPopup()}>
+          <div style={{ 'font-size': '2rem', 'margin-bottom': '8px' }}>📜</div>
+          <div style={{ color: '#ffd700', 'font-weight': 'bold', 'font-size': '1.1rem' }}>
+            支线任务解锁！
+          </div>
+          <div style={{ color: '#f5e6d3', 'font-size': '0.9rem', 'margin-top': '4px' }}>
+            新的支线任务已开启
+          </div>
         </div>
       )}
     </div>
