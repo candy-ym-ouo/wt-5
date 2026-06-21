@@ -2,6 +2,7 @@ import type { DifficultyConfig, DifficultyLevel, DifficultyAdjustmentResult, Boo
 import { BOOKS } from './books';
 import { getDateKey } from './dailyChallenge';
 import type { RarityLevel } from '../types/game';
+import { getUnlockedWorkshopRewardIds } from '../utils/workshopStorage';
 
 const RARITY_ORDER: RarityLevel[] = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
 
@@ -125,7 +126,13 @@ export const getDifficultyConfig = (level: DifficultyLevel): DifficultyConfig =>
 
 export const filterBooksByDifficulty = (level: DifficultyLevel, excludeIds: string[] = []): Book[] => {
   const config = getDifficultyConfig(level);
-  let books = BOOKS.filter(b => !excludeIds.includes(b.id));
+  const unlockedRewardIds = getUnlockedWorkshopRewardIds();
+
+  let books = BOOKS.filter(b => {
+    if (excludeIds.includes(b.id)) return false;
+    if (b.workshopReward && !unlockedRewardIds.has(b.id)) return false;
+    return true;
+  });
 
   if (config.targetBookFilter) {
     const filter = config.targetBookFilter;
@@ -145,7 +152,11 @@ export const filterBooksByDifficulty = (level: DifficultyLevel, excludeIds: stri
   }
 
   if (books.length === 0) {
-    books = BOOKS.filter(b => !excludeIds.includes(b.id));
+    books = BOOKS.filter(b => {
+      if (excludeIds.includes(b.id)) return false;
+      if (b.workshopReward && !unlockedRewardIds.has(b.id)) return false;
+      return true;
+    });
   }
 
   return books;
@@ -157,7 +168,8 @@ export const selectRandomTargetByDifficulty = (
 ): Book => {
   const availableBooks = filterBooksByDifficulty(level, excludeIds);
   if (availableBooks.length === 0) {
-    return BOOKS[Math.floor(Math.random() * BOOKS.length)];
+    const fallbackPool = BOOKS.filter(b => !b.workshopReward);
+    return fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
   }
   return availableBooks[Math.floor(Math.random() * availableBooks.length)];
 };
@@ -331,11 +343,16 @@ export const selectSmartTargetBook = (
   ]);
 
   if (availableBooks.length === 0) {
-    availableBooks = BOOKS.filter(b => !excludeIds.includes(b.id));
+    availableBooks = BOOKS.filter(b => {
+      if (excludeIds.includes(b.id)) return false;
+      if (b.workshopReward) return false;
+      return true;
+    });
   }
 
   if (availableBooks.length === 0) {
-    const fallbackBook = BOOKS[Math.floor(Math.random() * BOOKS.length)];
+    const fallbackPool = BOOKS.filter(b => !b.workshopReward);
+    const fallbackBook = fallbackPool[Math.floor(Math.random() * fallbackPool.length)];
     return {
       book: fallbackBook,
       selectionReason: '可用书籍不足，随机选择',

@@ -254,3 +254,23 @@ export const getAllMaterials = (): Record<string, number> => {
   const progress = getWorkshopProgress();
   return progress.materials;
 };
+
+export const DAMAGED_TO_REWARD: Record<string, string> = {
+  damaged_001: 'reward_001',
+  damaged_002: 'reward_002',
+  damaged_003: 'reward_003',
+  damaged_004: 'reward_004',
+  damaged_005: 'reward_005',
+  damaged_006: 'reward_006',
+  damaged_007: 'reward_007',
+  damaged_008: 'reward_008',
+};
+
+export const getUnlockedWorkshopRewardIds = (): Set<string> => {
+  const repaired = new Set(getWorkshopProgress().repairedBookIds);
+  const result = new Set<string>();
+  for (const [damagedId, rewardId] of Object.entries(DAMAGED_TO_REWARD)) {
+    if (repaired.has(damagedId)) result.add(rewardId);
+  }
+  return result;
+};

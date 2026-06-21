@@ -1,7 +1,13 @@
 import { BOOKS } from './books';
 import type { Book, DailyChallenge, DailyChallengeBook } from '../types/game';
+import { getUnlockedWorkshopRewardIds } from '../utils/workshopStorage';
 
 const DAILY_CHALLENGE_BOOK_COUNT = 5;
+
+const getAvailableBooks = (): Book[] => {
+  const unlockedRewardIds = getUnlockedWorkshopRewardIds();
+  return BOOKS.filter(b => !b.workshopReward || unlockedRewardIds.has(b.id));
+};
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -38,7 +44,7 @@ export function generateDailyChallenge(date?: Date): DailyChallenge {
   const seed = getDateSeed(dateKey);
   const random = seededRandom(seed);
 
-  const shuffledBooks = [...BOOKS].sort(() => random() - 0.5);
+  const shuffledBooks = [...getAvailableBooks()].sort(() => random() - 0.5);
   const selectedBooks = shuffledBooks.slice(0, DAILY_CHALLENGE_BOOK_COUNT);
 
   const dailyBooks: DailyChallengeBook[] = selectedBooks.map((book, index) => ({

@@ -18,6 +18,7 @@ import {
 import { getThemeById } from '../data/themes';
 import type { Book, PenaltyLevel, ClueType } from '../types/game';
 import { RandomEventActiveIndicator } from './RandomEventDisplay';
+import { getUnlockedWorkshopRewardIds } from '../utils/workshopStorage';
 
 export default function Bookshelf() {
   let containerRef: HTMLDivElement | undefined;
@@ -27,6 +28,10 @@ export default function Bookshelf() {
   
   const [hoveredBook, setHoveredBook] = createSignal<Book | null>(null);
   const [shakeTrigger, setShakeTrigger] = createSignal(0);
+
+  const isWorkshopRewardUnlocked = (bookId: string): boolean => {
+    return getUnlockedWorkshopRewardIds().has(bookId);
+  };
 
   const unlockedClueTypes = createMemo<Set<ClueType>>(() => {
     return new Set(currentClues().filter(c => c.unlocked).map(c => c.type));
@@ -280,7 +285,8 @@ export default function Bookshelf() {
 
   const createBookSprite = (book: Book): PIXI.Graphics => {
     const graphics = new PIXI.Graphics();
-    const color = parseInt(book.color.replace('#', ''), 16);
+    const isWorkshopLocked = book.workshopReward && !isWorkshopRewardUnlocked(book.id);
+    const color = isWorkshopLocked ? 0x444444 : parseInt(book.color.replace('#', ''), 16);
 
     graphics.beginFill(color);
     graphics.drawRoundedRect(0, 0, book.width, book.height, 2);
@@ -297,13 +303,28 @@ export default function Bookshelf() {
     }
     graphics.endFill();
 
-    graphics.beginFill(0xffd700, 0.6);
-    graphics.drawRect(2, 8, book.width - 4, 4);
-    graphics.endFill();
+    if (isWorkshopLocked) {
+      graphics.beginFill(0x888888, 0.4);
+      graphics.drawRect(0, 0, book.width, book.height);
+      graphics.endFill();
 
-    graphics.beginFill(0xffd700, 0.6);
-    graphics.drawRect(2, book.height - 12, book.width - 4, 4);
-    graphics.endFill();
+      const lockX = book.width / 2;
+      const lockY = book.height / 2;
+      graphics.lineStyle(1.5, 0xcccccc);
+      graphics.drawCircle(lockX, lockY - 3, 5);
+      graphics.endFill();
+      graphics.beginFill(0xcccccc);
+      graphics.drawRect(lockX - 4, lockY, 8, 6);
+      graphics.endFill();
+    } else {
+      graphics.beginFill(0xffd700, 0.6);
+      graphics.drawRect(2, 8, book.width - 4, 4);
+      graphics.endFill();
+
+      graphics.beginFill(0xffd700, 0.6);
+      graphics.drawRect(2, book.height - 12, book.width - 4, 4);
+      graphics.endFill();
+    }
 
     graphics.beginFill(0x000000, 0.15);
     graphics.drawRect(book.width - 3, 0, 3, book.height);
@@ -320,6 +341,8 @@ export default function Bookshelf() {
   const handleBookClick = (book: Book, sprite: PIXI.Graphics) => {
     const gameStatus = gameState().state;
     if (gameStatus !== 'playing') return;
+
+    if (book.workshopReward && !isWorkshopRewardUnlocked(book.id)) return;
 
     const eliminatedIds = gameState().powerUps.eliminatedBookIds;
     if (eliminatedIds.includes(book.id)) return;

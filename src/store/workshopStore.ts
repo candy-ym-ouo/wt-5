@@ -241,7 +241,7 @@ export const completeCurrentStage = (isPerfect: boolean = false): boolean => {
         }));
         
         const rarityConfig = RARITY_CONFIG[book.rarity];
-        setShowRewardPopup(`🎉 修复完成！《${book.title}》已收入珍藏，获得${rarityConfig.icon}${rarityConfig.name}稀有度藏书！`);
+        setShowRewardPopup(`🎉 修复完成！《${book.title}》已收入珍藏！${rarityConfig.icon}${rarityConfig.name}稀有度藏书已加入寻书内容池，下一局游戏可能遇到！`);
         setTimeout(() => setShowRewardPopup(null), 4000);
         
         const stats = getWorkshopStats();

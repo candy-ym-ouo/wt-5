@@ -17,6 +17,7 @@ export interface Book {
   isTarget?: boolean;
   rarity: RarityLevel;
   themes: string[];
+  workshopReward?: boolean;
 }
 
 export interface ThemeChallenge {

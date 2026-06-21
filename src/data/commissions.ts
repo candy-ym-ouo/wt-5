@@ -1,5 +1,11 @@
 import type { Customer, EraPreference, ThemePreference } from '../types/game';
 import { BOOKS } from './books';
+import { getUnlockedWorkshopRewardIds } from '../utils/workshopStorage';
+
+const getAvailableBooks = (): Book[] => {
+  const unlockedRewardIds = getUnlockedWorkshopRewardIds();
+  return BOOKS.filter(b => !b.workshopReward || unlockedRewardIds.has(b.id));
+};
 import type { Book } from '../types/game';
 
 export const CUSTOMERS: Customer[] = [
@@ -99,22 +105,23 @@ const THEME_TO_GENRES: Record<string, string[]> = {
 
 export const getBooksByTheme = (theme: ThemePreference): Book[] => {
   const genres = THEME_TO_GENRES[theme] || [];
-  return BOOKS.filter(b => genres.includes(b.genre) || b.themes.includes(theme));
+  return getAvailableBooks().filter(b => genres.includes(b.genre) || b.themes.includes(theme));
 };
 
 export const getBooksByEra = (era: EraPreference): Book[] => {
+  const available = getAvailableBooks();
   switch (era) {
     case '古代':
-      return BOOKS.filter(b => b.year < 1600);
+      return available.filter(b => b.year < 1600);
     case '近代':
-      return BOOKS.filter(b => b.year >= 1600 && b.year < 1900);
+      return available.filter(b => b.year >= 1600 && b.year < 1900);
     case '现代':
-      return BOOKS.filter(b => b.year >= 1900 && b.year < 1980);
+      return available.filter(b => b.year >= 1900 && b.year < 1980);
     case '当代':
-      return BOOKS.filter(b => b.year >= 1980);
+      return available.filter(b => b.year >= 1980);
     case '任意':
     default:
-      return BOOKS;
+      return available;
   }
 };
 
