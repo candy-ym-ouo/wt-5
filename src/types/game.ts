@@ -744,3 +744,59 @@ export interface CommissionMatchResult {
   matchDetails: string;
   satisfactionDelta: number;
 }
+
+export interface ThemeCollection {
+  id: string;
+  title: string;
+  icon: string;
+  description: string;
+  category: '历史' | '科幻' | '哲学' | '文学' | '科学' | '技术' | '古典' | '冒险';
+  color: string;
+  bookIds: string[];
+  requiredBooks: number;
+  rewardCoins: number;
+  rewardReputation: number;
+  rewardTitle?: string;
+  difficulty: 'easy' | 'normal' | 'hard' | 'expert';
+  unlockCondition?: {
+    type: 'books_collected' | 'themes_completed' | 'level_reached';
+    value: number;
+  };
+}
+
+export interface ThemeCollectionProgress {
+  collectionId: string;
+  collectedBookIds: string[];
+  completedAt?: number;
+  bestScore: number;
+  totalAttempts: number;
+  fastestCompletion?: number;
+}
+
+export interface ThemeCollectionChallenge {
+  id: string;
+  collectionId: string;
+  title: string;
+  description: string;
+  icon: string;
+  type: 'speed' | 'accuracy' | 'no_hint' | 'streak' | 'score';
+  target: number;
+  rewardCoins: number;
+  rewardReputation: number;
+  progress?: number;
+  completed: boolean;
+  completedAt?: number;
+}
+
+export interface ThemeCollectionRankEntry {
+  playerName: string;
+  avatar?: string;
+  collectionId: string;
+  score: number;
+  booksCollected: number;
+  timeUsed: number;
+  hintsUsed: number;
+  date: number;
+}
+
+export type ThemeCollectionTab = 'overview' | 'challenge' | 'codex' | 'ranking';

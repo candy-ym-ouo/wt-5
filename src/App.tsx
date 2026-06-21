@@ -17,6 +17,7 @@ import DecorationManager from './components/DecorationManager';
 import AccountProfile from './components/AccountProfile';
 import ActivityCenter from './components/ActivityCenter';
 import BookRepairWorkshop from './components/BookRepairWorkshop';
+import ThemeCollectionCenter from './components/ThemeCollectionCenter';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
@@ -37,6 +38,7 @@ import { RARITY_CONFIG } from './data/themes';
 export default function App() {
   const [showLeaderboard, setShowLeaderboard] = createSignal(false);
   const [showCollection, setShowCollection] = createSignal(false);
+  const [showThemeCollection, setShowThemeCollection] = createSignal(false);
   const state = createMemo(() => gameState());
   const diffInfo = createMemo(() => getDifficultyInfo());
   const isPlaying = createMemo(() => state().state === 'playing');
@@ -211,6 +213,14 @@ export default function App() {
           >
             <div class="stat-label">📖 图鉴</div>
             <div class="stat-value small-stat-value">{codexInfo().stats.collectedBooks}/{codexInfo().stats.totalBooks}</div>
+          </button>
+          <button 
+            class="stat-item theme-collection-button"
+            onClick={() => setShowThemeCollection(true)}
+            title="主题馆藏"
+          >
+            <div class="stat-label">📚 主题</div>
+            <div class="stat-value small-stat-value">馆藏</div>
           </button>
           <button 
             class="stat-item calendar-button"
@@ -679,6 +689,10 @@ export default function App() {
             新的支线任务已开启
           </div>
         </div>
+      )}
+
+      {showThemeCollection() && (
+        <ThemeCollectionCenter onClose={() => setShowThemeCollection(false)} />
       )}
     </div>
   );

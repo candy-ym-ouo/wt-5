@@ -1,4 +1,4 @@
-import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress, DailyChallengeScore, DailyChallengeProgress, CollectionEntry } from '../types/game';
+import type { LeaderboardEntry, ChapterProgress, SeasonInfo, PersonalBest, ThemeProgress, GameReplayData, AchievementProgress, DailyChallengeScore, DailyChallengeProgress, CollectionEntry, ThemeCollectionProgress, ThemeCollectionRankEntry } from '../types/game';
 import { ACHIEVEMENTS } from '../data/achievements';
 import { BOOKS } from '../data/books';
 
@@ -24,6 +24,9 @@ export const SEEN_EVENT_TYPES_KEY = 'old_bookstore_seen_event_types';
 export const TOTAL_EVENTS_TRIGGERED_KEY = 'old_bookstore_total_events_triggered';
 export const TUTORIAL_COMPLETED_KEY = 'old_bookstore_tutorial_completed';
 export const TUTORIAL_STEP_KEY = 'old_bookstore_tutorial_step';
+export const THEME_COLLECTION_PROGRESS_KEY = 'old_bookstore_tc_progress';
+export const THEME_COLLECTION_CHALLENGES_KEY = 'old_bookstore_tc_challenges';
+export const THEME_COLLECTION_RANKING_KEY = 'old_bookstore_tc_ranking';
 
 const CURRENT_STORAGE_VERSION = 4;
 const CURRENT_STORAGE_VERSION_EXTENDED = 5;
@@ -1799,3 +1802,115 @@ export function safeGetAllAchievementProgress(): Record<string, AchievementProgr
 export function safeGetPersonalBest(): PersonalBest {
   return getPersonalBest();
 }
+
+export const getAllThemeCollectionProgress = (): Record<string, ThemeCollectionProgress> => {
+  return _readJSON<Record<string, ThemeCollectionProgress>>(THEME_COLLECTION_PROGRESS_KEY, {});
+};
+
+export const getThemeCollectionProgress = (collectionId: string): ThemeCollectionProgress | null => {
+  const all = getAllThemeCollectionProgress();
+  return all[collectionId] || null;
+};
+
+export const saveThemeCollectionProgress = (progress: ThemeCollectionProgress): void => {
+  const all = getAllThemeCollectionProgress();
+  all[progress.collectionId] = progress;
+  localStorage.setItem(THEME_COLLECTION_PROGRESS_KEY, JSON.stringify(all));
+};
+
+export const updateThemeCollectionBook = (collectionId: string, bookId: string, score: number, timeUsed: number, _hintsUsed: number): ThemeCollectionProgress => {
+  const existing = getThemeCollectionProgress(collectionId);
+
+  const collectedBookIds = existing
+    ? existing.collectedBookIds.includes(bookId)
+      ? existing.collectedBookIds
+      : [...existing.collectedBookIds, bookId]
+    : [bookId];
+
+  const progress: ThemeCollectionProgress = existing
+    ? {
+        ...existing,
+        collectedBookIds,
+        bestScore: Math.max(existing.bestScore, score),
+        totalAttempts: existing.totalAttempts + 1,
+        fastestCompletion:
+          existing.fastestCompletion === undefined || timeUsed < existing.fastestCompletion
+            ? timeUsed
+            : existing.fastestCompletion,
+      }
+    : {
+        collectionId,
+        collectedBookIds,
+        bestScore: score,
+        totalAttempts: 1,
+        fastestCompletion: timeUsed,
+      };
+
+  saveThemeCollectionProgress(progress);
+  return progress;
+};
+
+export const markThemeCollectionCompleted = (collectionId: string): void => {
+  const existing = getThemeCollectionProgress(collectionId);
+  if (existing && !existing.completedAt) {
+    saveThemeCollectionProgress({
+      ...existing,
+      completedAt: Date.now(),
+    });
+  }
+};
+
+export const getCompletedThemeCollectionsCount = (): number => {
+  const all = getAllThemeCollectionProgress();
+  return Object.values(all).filter(p => p.completedAt).length;
+};
+
+export const getUnlockedThemeCollectionChallenges = (): string[] => {
+  return _readJSON<string[]>(THEME_COLLECTION_CHALLENGES_KEY, []);
+};
+
+export const saveUnlockedThemeCollectionChallenges = (ids: string[]): void => {
+  localStorage.setItem(THEME_COLLECTION_CHALLENGES_KEY, JSON.stringify(ids));
+};
+
+export const unlockThemeCollectionChallenge = (challengeId: string): boolean => {
+  const unlocked = getUnlockedThemeCollectionChallenges();
+  if (unlocked.includes(challengeId)) return false;
+  unlocked.push(challengeId);
+  saveUnlockedThemeCollectionChallenges(unlocked);
+  return true;
+};
+
+export const getThemeCollectionRanking = (collectionId?: string): ThemeCollectionRankEntry[] => {
+  const all = _readJSON<ThemeCollectionRankEntry[]>(THEME_COLLECTION_RANKING_KEY, []);
+  if (collectionId) {
+    return all.filter(e => e.collectionId === collectionId);
+  }
+  return all;
+};
+
+export const saveThemeCollectionRankEntry = (entry: ThemeCollectionRankEntry): ThemeCollectionRankEntry[] => {
+  const all = _readJSON<ThemeCollectionRankEntry[]>(THEME_COLLECTION_RANKING_KEY, []);
+  all.push(entry);
+  all.sort((a, b) => b.score - a.score);
+  const top100 = all.slice(0, 100);
+  localStorage.setItem(THEME_COLLECTION_RANKING_KEY, JSON.stringify(top100));
+  return top100;
+};
+
+export const getThemeCollectionRank = (collectionId: string, score: number): number => {
+  const entries = getThemeCollectionRanking(collectionId).sort((a, b) => b.score - a.score);
+  for (let i = 0; i < entries.length; i++) {
+    if (entries[i].score <= score) return i + 1;
+  }
+  return entries.length + 1;
+};
+
+export const getTotalThemeCollectionsCollected = (): number => {
+  const all = getAllThemeCollectionProgress();
+  let total = 0;
+  for (const progress of Object.values(all)) {
+    total += progress.collectedBookIds.length;
+  }
+  return total;
+};
