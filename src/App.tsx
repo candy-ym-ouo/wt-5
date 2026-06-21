@@ -25,6 +25,8 @@ import { getCalendarInfo, openCalendar, closeCalendar, getCalendarIntegration } 
 import { showAccountModal, closeAccountModal, openAccountModal, currentNickname, currentAvatar } from './store/accountStore';
 import { openActivityCenter, closeActivityCenter, activityRewardPopup, dismissActivityRewardPopup, getActivityInfo } from './store/activityStore';
 import { openWorkshop, closeWorkshop, getWorkshopStateInfo, showWorkshop } from './store/workshopStore';
+import { openQuestPanel, closeQuestPanel, getQuestPanelInfo, getUnclaimedQuestCount, dismissQuestPopup } from './store/questStore';
+import QuestPanel from './components/QuestPanel';
 import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
@@ -61,7 +63,10 @@ export default function App() {
   const calendarInfo = createMemo(() => getCalendarInfo());
   const calendarIntegration = createMemo(() => getCalendarIntegration());
   const activityInfo = createMemo(() => getActivityInfo());
+  const questPanelInfo = createMemo(() => getQuestPanelInfo());
+  const questUnclaimed = createMemo(() => getUnclaimedQuestCount());
   const [showCalendar, setShowCalendar] = createSignal(false);
+  const [showQuests, setShowQuests] = createSignal(false);
 
   return (
     <div class="game-container">
@@ -234,6 +239,19 @@ export default function App() {
             <div class="stat-label">🔧 工坊</div>
             <div class="stat-value small-stat-value">
               修复
+            </div>
+          </button>
+          <button
+            class="stat-item quest-button"
+            onClick={() => {
+              openQuestPanel();
+              setShowQuests(true);
+            }}
+            title="任务中心"
+          >
+            <div class="stat-label">📋 任务</div>
+            <div class="stat-value small-stat-value">
+              {questUnclaimed() > 0 ? `🎁${questUnclaimed()}` : '查看'}
             </div>
           </button>
           <button 
@@ -577,6 +595,20 @@ export default function App() {
         <div class="workshop-reward-popup">
           <div class="workshop-reward-popup-title">📚 修复完成</div>
           <div class="workshop-reward-popup-text">{getWorkshopStateInfo().rewardPopup}</div>
+        </div>
+      )}
+
+      {showQuests() && questPanelInfo().isVisible && (
+        <QuestPanel onClose={() => {
+          closeQuestPanel();
+          setShowQuests(false);
+        }} />
+      )}
+
+      {questPanelInfo().showCompletePopup && state().state !== 'paused' && (
+        <div class="quest-complete-notification" onClick={() => dismissQuestPopup()}>
+          <div class="quest-complete-notification-title">🎉 任务完成</div>
+          <div class="quest-complete-notification-name">{questPanelInfo().showCompletePopup}</div>
         </div>
       )}
     </div>

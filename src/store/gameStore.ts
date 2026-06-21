@@ -87,7 +87,9 @@ import {
   getTimeBonus,
   getHintBonus,
   awardCommissionRewards,
+  getStoreLevel,
 } from './storeManager';
+import { updateQuestProgress, buildGameContext } from './questStore';
 import {
   processBookFoundForCalendar,
   getCalendarIntegration,
@@ -2263,6 +2265,7 @@ export const selectBook = (bookId: string): boolean => {
         updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
         recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
         setCollectionCount(getUnlockedCollectionCount());
+        triggerQuestProgressOnBookFound(book, findTime, state);
 
         if (nextTaskIndex >= tasks.length) {
           setTimeout(completeChapter, 500);
@@ -2306,6 +2309,7 @@ export const selectBook = (bookId: string): boolean => {
       updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
       recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
       setCollectionCount(getUnlockedCollectionCount());
+      triggerQuestProgressOnBookFound(book, findTime, state);
     }
     return true;
   } else {
@@ -4600,4 +4604,83 @@ export const getAverageSatisfaction = (): number => {
   const total = state.commission.totalCommissionsCompleted + state.commission.totalCommissionsFailed;
   if (total === 0) return 0;
   return Math.round(state.commission.totalSatisfaction / total);
+};
+
+const triggerQuestProgressOnBookFound = (book: Book, _findTime: number, state: GameStore): void => {
+  const fastFinds: Record<number, number> = {};
+  const recentFinds = state.roundStats.findTimes;
+  for (const t of [10, 20, 30]) {
+    fastFinds[t] = recentFinds.filter(ft => ft <= t).length;
+  }
+
+  const genres = foundGenres();
+  const distinctGenres = new Set([...genres, book.genre]).size;
+
+  const rarityCounts: Record<string, number> = {};
+  const foundBookRarities = state.foundBooks.map(id => BOOKS.find(b => b.id === id)?.rarity).filter(Boolean);
+  foundBookRarities.push(book.rarity);
+  for (const r of foundBookRarities) {
+    if (r) rarityCounts[r] = (rarityCounts[r] || 0) + 1;
+  }
+
+  const noHintRounds = state.roundStats.hintsUsedPerRound.filter(h => h === 0).length;
+
+  const context = buildGameContext({
+    foundBooks: state.foundBooks.length + 1,
+    distinctGenres,
+    rarityBooksFound: rarityCounts,
+    bestScore: state.score,
+    bestStreak: Math.max(state.streak.bestStreak, state.streak.currentStreak + 1),
+    hintsUsed: state.hintsUsed,
+    noHintRounds,
+    powerupsUsed: state.powerUps.powerUpsUsedTotal.freeHints + state.powerUps.powerUpsUsedTotal.timePeeks + state.powerUps.powerUpsUsedTotal.eliminateWrongs,
+    collectedBooks: getUnlockedCollectionCount(),
+    storeLevel: getStoreLevel(),
+    fastFinds,
+  });
+
+  updateQuestProgress(context);
+};
+
+export const triggerQuestProgressOnGameEnd = (params: {
+  gamesCompleted: number;
+  bestScore: number;
+  difficultyLevel: string;
+  gameMode: string;
+  chaptersCompleted: number;
+  chapterCompletions: Record<string, number>;
+  commissionsCompleted: number;
+  rushCompleted: number;
+  perfectRushCompleted: number;
+  dailyGamesCompleted: number;
+  themeGamesCompleted: number;
+  collectedBooks: number;
+  bestStreak: number;
+  storeLevel: number;
+  coinsEarned: number;
+}): void => {
+  const difficultyGames: Record<string, number> = {};
+  if (params.difficultyLevel && (params.gameMode === 'classic' || params.gameMode === 'chapter')) {
+    difficultyGames[params.difficultyLevel] = 1;
+  }
+
+  const context = buildGameContext({
+    foundBooks: 0,
+    gamesCompleted: params.gamesCompleted,
+    bestScore: params.bestScore,
+    bestStreak: params.bestStreak,
+    collectedBooks: params.collectedBooks,
+    chaptersCompleted: params.chaptersCompleted,
+    chapterCompletions: params.chapterCompletions,
+    difficultyGamesCompleted: difficultyGames,
+    dailyGamesCompleted: params.dailyGamesCompleted,
+    rushCompleted: params.rushCompleted,
+    perfectRushCompleted: params.perfectRushCompleted,
+    themeGamesCompleted: params.themeGamesCompleted,
+    commissionsCompleted: params.commissionsCompleted,
+    storeLevel: params.storeLevel,
+    coinsEarned: params.coinsEarned,
+  });
+
+  updateQuestProgress(context);
 };
