@@ -26,6 +26,7 @@ import {
   getAverageSatisfaction,
 } from '../store/gameStore';
 import RandomEventDisplay from './RandomEventDisplay';
+import AnomalyEventDisplay from './AnomalyEventDisplay';
 import Leaderboard from './Leaderboard';
 import BookCollection from './BookCollection';
 import ChapterSelect from './ChapterSelect';
@@ -550,6 +551,7 @@ export default function GameModal() {
       )}
 
       <RandomEventDisplay />
+      <AnomalyEventDisplay />
     </>
   );
 }

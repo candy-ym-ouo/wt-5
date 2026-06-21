@@ -18,6 +18,7 @@ import {
 import { getThemeById } from '../data/themes';
 import type { Book, PenaltyLevel, ClueType } from '../types/game';
 import { RandomEventActiveIndicator } from './RandomEventDisplay';
+import { AnomalyEventActiveIndicator } from './AnomalyEventDisplay';
 import { getUnlockedWorkshopRewardIds } from '../utils/workshopStorage';
 
 export default function Bookshelf() {
@@ -483,6 +484,7 @@ export default function Bookshelf() {
       data-shake={shakeTrigger()}
     >
       <RandomEventActiveIndicator />
+      <AnomalyEventActiveIndicator />
       <div class="theme-filter-panel">
         <div class="theme-filter-header">
           <span class="theme-filter-icon">🎭</span>

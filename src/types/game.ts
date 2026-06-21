@@ -488,6 +488,7 @@ export interface GameStore {
   rush: RushState;
   randomEvent: RandomEventState;
   commission: CommissionState;
+  anomalyEvent: AnomalyEventState;
   currentThemeCollectionId: string | null;
   themeCollectionFoundBooks: string[];
   themeCollectionScore: number;
@@ -623,6 +624,7 @@ export interface RandomEvent {
   difficultyRestriction?: DifficultyLevel[];
   gameModeRestriction?: GameMode[];
   positive: boolean;
+  canCoexistWithRandomEvents: boolean;
 }
 
 export interface ActiveRandomEvent {
@@ -806,3 +808,169 @@ export interface ThemeCollectionRankEntry {
 }
 
 export type ThemeCollectionTab = 'overview' | 'challenge' | 'codex' | 'ranking';
+
+export type AnomalyEventType =
+  | 'customer_queue_jump'
+  | 'book_misplaced'
+  | 'emergency_closing'
+  | 'clue_damaged'
+  | 'customer_complaint'
+  | 'water_leak'
+  | 'book_theft'
+  | 'power_surge';
+
+export type AnomalyEventSeverity = 'mild' | 'moderate' | 'severe' | 'critical';
+
+export type AnomalyEventEffectType =
+  | 'time_penalty'
+  | 'time_bonus'
+  | 'score_penalty'
+  | 'score_boost'
+  | 'hint_lock'
+  | 'hint_consume'
+  | 'book_obscure'
+  | 'book_misplace'
+  | 'clue_damage'
+  | 'clue_hide'
+  | 'clue_reveal'
+  | 'layout_shuffle'
+  | 'consecutive_reset'
+  | 'streak_break'
+  | 'commission_fail'
+  | 'multiplier_decrease'
+  | 'multiplier_increase';
+
+export interface AnomalyEventEffect {
+  type: AnomalyEventEffectType;
+  value: number;
+  duration?: number;
+  description: string;
+  targetId?: string;
+}
+
+export type AnomalyResolutionType = 'time' | 'score' | 'hint' | 'choice' | 'immediate';
+
+export interface AnomalyResolutionOption {
+  id: string;
+  label: string;
+  description: string;
+  icon: string;
+  cost: {
+    time?: number;
+    score?: number;
+    hints?: number;
+  };
+  reward: {
+    time?: number;
+    score?: number;
+    hints?: number;
+    streakBonus?: boolean;
+  };
+  successRate: number;
+}
+
+export interface AnomalyEvent {
+  id: string;
+  type: AnomalyEventType;
+  title: string;
+  description: string;
+  icon: string;
+  severity: AnomalyEventSeverity;
+  effects: AnomalyEventEffect[];
+  resolutionOptions: AnomalyResolutionOption[];
+  autoResolveAfter: number;
+  probability: number;
+  minLevel: number;
+  maxLevel: number;
+  difficultyRestriction?: DifficultyLevel[];
+  gameModeRestriction?: GameMode[];
+  canCoexistWithRandomEvents: boolean;
+  triggerCondition?: {
+    afterRounds?: number;
+    afterBooksFound?: number;
+    consecutiveCorrect?: number;
+    consecutiveWrong?: number;
+    timeRemainingBelow?: number;
+    scoreAbove?: number;
+  };
+}
+
+export interface ActiveAnomalyEvent {
+  event: AnomalyEvent;
+  startTime: number;
+  autoResolveAt: number;
+  expiresAt?: number;
+  activated: boolean;
+  resolved: boolean;
+  resolution?: AnomalyResolutionOption;
+  resolutionSuccess?: boolean;
+  effectsApplied: boolean;
+  roundAffected: number;
+}
+
+export interface AnomalyEventSchedule {
+  enabled: boolean;
+  minIntervalMs: number;
+  maxEventsPerGame: number;
+  allowedEventTypes: AnomalyEventType[];
+  forbiddenEventTypes: AnomalyEventType[];
+  severityWeights: Record<AnomalyEventSeverity, number>;
+  customProbabilities?: Record<string, number>;
+  triggerConditionsEnabled: boolean;
+}
+
+export interface AnomalyEventState {
+  activeEvent: ActiveAnomalyEvent | null;
+  showEventPopup: boolean;
+  eventHistory: {
+    eventId: string;
+    round: number;
+    timestamp: number;
+    resolutionId?: string;
+    success: boolean;
+    scoreAdjustment: number;
+    timeAdjustment: number;
+  }[];
+  eventsTriggeredThisGame: number;
+  eventsResolvedSuccessfully: number;
+  eventsFailed: number;
+  lastEventTriggeredAt: number;
+  schedule: AnomalyEventSchedule;
+  damagedClueIds: Set<string>;
+  misplacedBookIds: Set<string>;
+}
+
+export interface AnomalyEventResult {
+  event: AnomalyEvent;
+  resolution: AnomalyResolutionOption | null;
+  success: boolean;
+  scoreAdjustment: number;
+  timeAdjustment: number;
+  hintAdjustment: number;
+  messages: string[];
+  streakPreserved: boolean;
+}
+
+export const DEFAULT_ANOMALY_SCHEDULE: AnomalyEventSchedule = {
+  enabled: true,
+  minIntervalMs: 20000,
+  maxEventsPerGame: 5,
+  allowedEventTypes: [
+    'customer_queue_jump',
+    'book_misplaced',
+    'emergency_closing',
+    'clue_damaged',
+    'customer_complaint',
+    'water_leak',
+    'book_theft',
+    'power_surge',
+  ],
+  forbiddenEventTypes: [],
+  severityWeights: {
+    mild: 0.40,
+    moderate: 0.35,
+    severe: 0.20,
+    critical: 0.05,
+  },
+  triggerConditionsEnabled: true,
+};

@@ -25,6 +25,7 @@ export const RANDOM_EVENTS: RandomEvent[] = [
     maxLevel: 50,
     difficultyRestriction: ['normal', 'hard', 'expert', 'master'],
     positive: false,
+    canCoexistWithRandomEvents: false,
   },
   {
     id: 'shelf_rearrange',
@@ -48,6 +49,7 @@ export const RANDOM_EVENTS: RandomEvent[] = [
     minLevel: 3,
     maxLevel: 50,
     positive: false,
+    canCoexistWithRandomEvents: false,
   },
   {
     id: 'hint_failure',
@@ -74,6 +76,7 @@ export const RANDOM_EVENTS: RandomEvent[] = [
     maxLevel: 50,
     difficultyRestriction: ['hard', 'expert', 'master'],
     positive: false,
+    canCoexistWithRandomEvents: false,
   },
   {
     id: 'time_warp',
@@ -97,6 +100,7 @@ export const RANDOM_EVENTS: RandomEvent[] = [
     minLevel: 4,
     maxLevel: 50,
     positive: false,
+    canCoexistWithRandomEvents: true,
   },
   {
     id: 'bonus_round',
@@ -120,6 +124,7 @@ export const RANDOM_EVENTS: RandomEvent[] = [
     minLevel: 1,
     maxLevel: 50,
     positive: true,
+    canCoexistWithRandomEvents: true,
   },
   {
     id: 'fog_of_war',
@@ -145,6 +150,7 @@ export const RANDOM_EVENTS: RandomEvent[] = [
     maxLevel: 50,
     difficultyRestriction: ['expert', 'master'],
     positive: false,
+    canCoexistWithRandomEvents: false,
   },
   {
     id: 'lucky_find',
@@ -168,6 +174,7 @@ export const RANDOM_EVENTS: RandomEvent[] = [
     minLevel: 1,
     maxLevel: 50,
     positive: true,
+    canCoexistWithRandomEvents: true,
   },
   {
     id: 'curse_of_doubt',
@@ -193,6 +200,7 @@ export const RANDOM_EVENTS: RandomEvent[] = [
     maxLevel: 50,
     difficultyRestriction: ['hard', 'expert', 'master'],
     positive: false,
+    canCoexistWithRandomEvents: false,
   },
 ];
 

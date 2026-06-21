@@ -1,5 +1,6 @@
 import { createSignal } from 'solid-js';
-import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage, RatingResult, RatingInput, RandomEvent, ActiveRandomEvent, RandomEventResult, CustomerCommission, CommissionMatchResult, EraPreference, ThemePreference } from '../types/game';
+import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMode, ThemeChallenge, PenaltyLevel, WrongPenaltyEvent, RoundDetail, GameReplayData, AchievementProgress, ThemeFilterJudgment, ThemeFilterResult, DailyChallenge, RushStage, RatingResult, RatingInput, RandomEvent, ActiveRandomEvent, RandomEventResult, CustomerCommission, CommissionMatchResult, EraPreference, ThemePreference, AnomalyEvent, ActiveAnomalyEvent, AnomalyEventResult, AnomalyResolutionOption } from '../types/game';
+import { DEFAULT_ANOMALY_SCHEDULE } from '../types/game';
 import { BOOKS } from '../data/books';
 import { createCluesForBook, buildClueContent } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
@@ -88,6 +89,10 @@ import {
   selectRandomEvent,
   calculateRandomEventImpact,
 } from '../data/randomEvents';
+import {
+  selectAnomalyEvent,
+  resolveAnomalyEventWithOption,
+} from '../data/anomalyEvents';
 import {
   processBookFound,
   getStoreBonus,
@@ -248,6 +253,18 @@ const initialStore: GameStore = {
     showCommissionPopup: false,
     lastCommissionResult: null,
   },
+  anomalyEvent: {
+    activeEvent: null,
+    showEventPopup: false,
+    eventHistory: [],
+    eventsTriggeredThisGame: 0,
+    eventsResolvedSuccessfully: 0,
+    eventsFailed: 0,
+    lastEventTriggeredAt: 0,
+    schedule: { ...DEFAULT_ANOMALY_SCHEDULE },
+    damagedClueIds: new Set<string>(),
+    misplacedBookIds: new Set<string>(),
+  },
   currentThemeCollectionId: null,
   themeCollectionFoundBooks: [],
   themeCollectionScore: 0,
@@ -296,6 +313,10 @@ export const [hiddenClueIds, setHiddenClueIds] = createSignal<Set<string>>(new S
 export const [lockedClueTypes, setLockedClueTypes] = createSignal<Set<string>>(new Set());
 export const [showCommissionResultPopup, setShowCommissionResultPopup] = createSignal(false);
 export const [commissionTimeRemaining, setCommissionTimeRemaining] = createSignal(0);
+export const [showAnomalyEventPopup, setShowAnomalyEventPopup] = createSignal<AnomalyEventResult | null>(null);
+export const [lastAnomalyEvent, setLastAnomalyEvent] = createSignal<ActiveAnomalyEvent | null>(null);
+export const [damagedClueIdsState, setDamagedClueIdsState] = createSignal<Set<string>>(new Set());
+export const [misplacedBookIdsState, setMisplacedBookIdsState] = createSignal<Set<string>>(new Set());
 
 let timerInterval: number | null = null;
 
@@ -599,6 +620,345 @@ export const getRandomEventInfo = () => {
 
 export const hasRandomEventActive = (): boolean => {
   return gameState().randomEvent.activeEvent !== null;
+};
+
+const clearAnomalyEventEffects = () => {
+  setDamagedClueIdsState(new Set<string>());
+  setMisplacedBookIdsState(new Set<string>());
+};
+
+const applyAnomalyEventEffects = (event: AnomalyEvent): void => {
+  for (const effect of event.effects) {
+    switch (effect.type) {
+      case 'clue_damage': {
+        const clues = currentClues();
+        const unlockedClues = clues.filter(c => c.unlocked);
+        if (unlockedClues.length > 0) {
+          const shuffled = [...unlockedClues].sort(() => Math.random() - 0.5);
+          const toDamage = new Set<string>(shuffled.slice(0, effect.value).map(c => c.id));
+          setDamagedClueIdsState(toDamage);
+          if (effect.duration) {
+            setPausableTimeout(`anomalyEvent_damageClue_${event.id}`, () => {
+              setDamagedClueIdsState(new Set<string>());
+            }, effect.duration);
+          }
+        }
+        break;
+      }
+      case 'book_misplace': {
+        const allBookIds = BOOKS.map(b => b.id);
+        const shuffled = [...allBookIds].sort(() => Math.random() - 0.5);
+        const toMisplace = new Set<string>(shuffled.slice(0, effect.value));
+        setMisplacedBookIdsState(toMisplace);
+        if (effect.duration) {
+          setPausableTimeout(`anomalyEvent_misplace_${event.id}`, () => {
+            setMisplacedBookIdsState(new Set<string>());
+          }, effect.duration);
+        }
+        break;
+      }
+      case 'book_obscure': {
+        const allBookIds = BOOKS.map(b => b.id);
+        const shuffled = [...allBookIds].sort(() => Math.random() - 0.5);
+        const obscureCount = Math.floor(shuffled.length * 0.6);
+        const toObscure = new Set<string>(shuffled.slice(0, obscureCount));
+        setObscuredBookIds(prev => {
+          const next = new Set(prev);
+          toObscure.forEach(id => next.add(id));
+          return next;
+        });
+        if (effect.duration) {
+          setPausableTimeout(`anomalyEvent_obscure_${event.id}`, () => {
+            setObscuredBookIds(prev => {
+              const next = new Set(prev);
+              toObscure.forEach(id => next.delete(id));
+              return next;
+            });
+          }, effect.duration);
+        }
+        break;
+      }
+      case 'layout_shuffle': {
+        const shuffledPositions: Record<string, { shelf: number; position: number }> = {};
+        BOOKS.forEach(book => {
+          const newShelf = Math.floor(Math.random() * 5);
+          const newPosition = Math.floor(Math.random() * 10);
+          shuffledPositions[book.id] = { shelf: newShelf, position: newPosition };
+        });
+        setShuffledBookPositions(shuffledPositions);
+        break;
+      }
+      case 'hint_lock': {
+        const allClueTypes = ['author', 'year', 'genre', 'title', 'shelf', 'description', 'background'];
+        const shuffled = [...allClueTypes].sort(() => Math.random() - 0.5);
+        const toLock = new Set<string>(shuffled.slice(0, effect.value));
+        setLockedClueTypes(prev => {
+          const next = new Set(prev);
+          toLock.forEach(id => next.add(id));
+          return next;
+        });
+        if (effect.duration) {
+          setPausableTimeout(`anomalyEvent_lockClue_${event.id}`, () => {
+            setLockedClueTypes(prev => {
+              const next = new Set(prev);
+              toLock.forEach(id => next.delete(id));
+              return next;
+            });
+          }, effect.duration);
+        }
+        break;
+      }
+      case 'clue_hide': {
+        const clues = currentClues();
+        const unlockedClues = clues.filter(c => c.unlocked);
+        if (unlockedClues.length > 0) {
+          const shuffled = [...unlockedClues].sort(() => Math.random() - 0.5);
+          const toHide = new Set<string>(shuffled.slice(0, effect.value).map(c => c.id));
+          setHiddenClueIds(prev => {
+            const next = new Set(prev);
+            toHide.forEach(id => next.add(id));
+            return next;
+          });
+          if (effect.duration) {
+            setPausableTimeout(`anomalyEvent_hideClue_${event.id}`, () => {
+              setHiddenClueIds(prev => {
+                const next = new Set(prev);
+                toHide.forEach(id => next.delete(id));
+                return next;
+              });
+            }, effect.duration);
+          }
+        }
+        break;
+      }
+      case 'streak_break': {
+        setGameState(prev => ({
+          ...prev,
+          streak: {
+            ...prev.streak,
+            currentStreak: 0,
+          },
+        }));
+        break;
+      }
+      case 'consecutive_reset': {
+        setGameState(prev => ({
+          ...prev,
+          consecutiveCorrect: 0,
+        }));
+        break;
+      }
+    }
+  }
+};
+
+export const triggerAnomalyEvent = (): AnomalyEventResult | null => {
+  const state = gameState();
+  if (state.state !== 'playing') return null;
+  if (state.anomalyEvent.activeEvent) return null;
+
+  const randomState = state.randomEvent.activeEvent;
+  if (randomState && !randomState.event.canCoexistWithRandomEvents) return null;
+
+  const event = selectAnomalyEvent(
+    state.currentLevel,
+    state.difficultyLevel,
+    state.gameMode,
+    state.anomalyEvent.schedule,
+    state.anomalyEvent.lastEventTriggeredAt,
+    state.anomalyEvent.eventsTriggeredThisGame,
+    state.foundBooks.length,
+    state.consecutiveCorrect,
+    state.wrongPenalty.consecutiveWrong,
+    state.timeRemaining,
+    state.score
+  );
+
+  if (!event) return null;
+
+  if (!event.canCoexistWithRandomEvents && randomState) {
+    resolveRandomEvent();
+  }
+
+  const activeEvent: ActiveAnomalyEvent = {
+    event,
+    startTime: Date.now(),
+    autoResolveAt: Date.now() + event.autoResolveAfter,
+    activated: true,
+    resolved: false,
+    effectsApplied: false,
+    roundAffected: state.currentLevel,
+  };
+
+  const now = Date.now();
+
+  setGameState(prev => ({
+    ...prev,
+    anomalyEvent: {
+      ...prev.anomalyEvent,
+      activeEvent,
+      showEventPopup: true,
+      eventsTriggeredThisGame: prev.anomalyEvent.eventsTriggeredThisGame + 1,
+      lastEventTriggeredAt: now,
+    },
+  }));
+
+  applyAnomalyEventEffects(event);
+
+  setLastAnomalyEvent(activeEvent);
+
+  setPausableTimeout(`anomalyEvent_autoResolve_${event.id}`, () => {
+    const currentState = gameState();
+    if (currentState.anomalyEvent.activeEvent?.event.id === event.id &&
+        !currentState.anomalyEvent.activeEvent.resolved) {
+      resolveAnomalyEvent(null);
+    }
+  }, event.autoResolveAfter);
+
+  const initialResult: AnomalyEventResult = {
+    event,
+    resolution: null,
+    success: false,
+    scoreAdjustment: 0,
+    timeAdjustment: 0,
+    hintAdjustment: 0,
+    messages: [event.description],
+    streakPreserved: false,
+  };
+
+  setShowAnomalyEventPopup(initialResult);
+
+  return initialResult;
+};
+
+export const resolveAnomalyEvent = (option: AnomalyResolutionOption | null): AnomalyEventResult | null => {
+  const state = gameState();
+  if (!state.anomalyEvent.activeEvent) return null;
+
+  const activeEvent = state.anomalyEvent.activeEvent;
+  if (activeEvent.resolved) return null;
+
+  const result = resolveAnomalyEventWithOption(activeEvent.event, option);
+
+  clearAnomalyEventEffects();
+
+  const now = Date.now();
+
+  setGameState(prev => {
+    const newStreak = result.streakPreserved || prev.streak.currentStreak > 0 ? prev.streak : { ...prev.streak };
+    if (!result.streakPreserved) {
+      const hasStreakBreak = activeEvent.event.effects.some(e => e.type === 'streak_break');
+      if (hasStreakBreak && !result.success) {
+        newStreak.currentStreak = 0;
+      }
+    }
+
+    return {
+      ...prev,
+      timeRemaining: Math.max(prev.timeRemaining + result.timeAdjustment, 0),
+      score: Math.max(prev.score + result.scoreAdjustment, 0),
+      hintsRemaining: Math.max(prev.hintsRemaining + result.hintAdjustment, 0),
+      streak: newStreak,
+      anomalyEvent: {
+        ...prev.anomalyEvent,
+        activeEvent: {
+          ...activeEvent,
+          resolved: true,
+          resolution: option || undefined,
+          resolutionSuccess: result.success,
+        },
+        showEventPopup: false,
+        eventsResolvedSuccessfully: prev.anomalyEvent.eventsResolvedSuccessfully + (result.success ? 1 : 0),
+        eventsFailed: prev.anomalyEvent.eventsFailed + (result.success ? 0 : 1),
+        eventHistory: [
+          ...prev.anomalyEvent.eventHistory,
+          {
+            eventId: activeEvent.event.id,
+            round: activeEvent.roundAffected,
+            timestamp: now,
+            resolutionId: option?.id,
+            success: result.success,
+            scoreAdjustment: result.scoreAdjustment,
+            timeAdjustment: result.timeAdjustment,
+          },
+        ],
+      },
+    };
+  });
+
+  setShowAnomalyEventPopup(result);
+  setLastAnomalyEvent(null);
+
+  setPausableTimeout(`anomalyEventResult_${activeEvent.event.id}`, () => {
+    setShowAnomalyEventPopup(null);
+    setGameState(prev => ({
+      ...prev,
+      anomalyEvent: {
+        ...prev.anomalyEvent,
+        activeEvent: null,
+      },
+    }));
+  }, 3000);
+
+  return result;
+};
+
+export const dismissAnomalyEventPopup = (): void => {
+  setGameState(prev => ({
+    ...prev,
+    anomalyEvent: {
+      ...prev.anomalyEvent,
+      showEventPopup: false,
+    },
+  }));
+};
+
+export const getAnomalyEventInfo = () => {
+  const state = gameState();
+  const active = state.anomalyEvent.activeEvent;
+  return {
+    activeEvent: active,
+    eventHistory: state.anomalyEvent.eventHistory,
+    eventsTriggeredThisGame: state.anomalyEvent.eventsTriggeredThisGame,
+    eventsResolvedSuccessfully: state.anomalyEvent.eventsResolvedSuccessfully,
+    eventsFailed: state.anomalyEvent.eventsFailed,
+    schedule: state.anomalyEvent.schedule,
+    damagedClueIds: damagedClueIdsState(),
+    misplacedBookIds: misplacedBookIdsState(),
+  };
+};
+
+export const hasAnomalyEventActive = (): boolean => {
+  const activeEvent = gameState().anomalyEvent.activeEvent;
+  return activeEvent !== null && !activeEvent.resolved;
+};
+
+export const updateAnomalyEventSchedule = (updates: Partial<typeof DEFAULT_ANOMALY_SCHEDULE>): void => {
+  setGameState(prev => ({
+    ...prev,
+    anomalyEvent: {
+      ...prev.anomalyEvent,
+      schedule: {
+        ...prev.anomalyEvent.schedule,
+        ...updates,
+      },
+    },
+  }));
+};
+
+const clearAllActiveEvents = (): void => {
+  resolveRandomEvent();
+  clearAnomalyEventEffects();
+  setGameState(prev => ({
+    ...prev,
+    anomalyEvent: {
+      ...prev.anomalyEvent,
+      activeEvent: null,
+      showEventPopup: false,
+    },
+  }));
+  setShowAnomalyEventPopup(null);
+  setLastAnomalyEvent(null);
 };
 
 export const checkRandomEventAchievements = () => {
@@ -1187,7 +1547,7 @@ const startTimer = () => {
             hintsUsed: gameState().hintsUsed,
             consecutiveCorrect: gameState().consecutiveCorrect,
           });
-          resolveRandomEvent();
+          clearAllActiveEvents();
           checkAchievements();
           checkRandomEventAchievements();
           saveCurrentStreak();
