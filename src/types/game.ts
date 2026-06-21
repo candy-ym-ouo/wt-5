@@ -18,6 +18,7 @@ export interface Book {
   rarity: RarityLevel;
   themes: string[];
   workshopReward?: boolean;
+  icon?: string;
 }
 
 export interface ThemeChallenge {

@@ -1,4 +1,4 @@
-import { createSignal, createMemo } from 'solid-js';
+import { createSignal, createMemo, For } from 'solid-js';
 import Bookshelf from './components/Bookshelf';
 import ClueCards from './components/ClueCards';
 import HintSystem from './components/HintSystem';
@@ -19,6 +19,7 @@ import ActivityCenter from './components/ActivityCenter';
 import BookRepairWorkshop from './components/BookRepairWorkshop';
 import ThemeCollectionCenter from './components/ThemeCollectionCenter';
 import SettlementCenter from './components/SettlementCenter';
+import TouringExhibitionCenter from './components/TouringExhibitionCenter';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo, isThemeCollectionMode, getThemeCollectionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
@@ -29,6 +30,7 @@ import { openActivityCenter, closeActivityCenter, activityRewardPopup, dismissAc
 import { openWorkshop, closeWorkshop, getWorkshopStateInfo, showWorkshop } from './store/workshopStore';
 import { openQuestPanel, closeQuestPanel, getQuestPanelInfo, getUnclaimedQuestCount, dismissQuestPopup } from './store/questStore';
 import { openCharacterPanel, closeCharacterPanel, getCharacterPanelInfo, characterState, dismissRelationshipPopup, dismissBooklistUnlockPopup, dismissAchievementUnlockPopup, dismissQuestUnlockPopup } from './store/characterStore';
+import { openExhibitionCenter, closeExhibitionCenter, exhibitionState, exhibitionRewardPopup, dismissExhibitionRewardPopup, getExhibitionInfo } from './store/touringExhibitionStore';
 import { RELATIONSHIP_THRESHOLDS, RELATIONSHIP_LEVEL_ICONS } from './types/character';
 import QuestPanel from './components/QuestPanel';
 import CharacterPanel from './components/CharacterPanel';
@@ -74,6 +76,7 @@ export default function App() {
   const questPanelInfo = createMemo(() => getQuestPanelInfo());
   const questUnclaimed = createMemo(() => getUnclaimedQuestCount());
   const charPanelInfo = createMemo(() => getCharacterPanelInfo());
+  const exhibitionInfo = createMemo(() => getExhibitionInfo());
   const [showCalendar, setShowCalendar] = createSignal(false);
   const [showQuests, setShowQuests] = createSignal(false);
 
@@ -251,6 +254,17 @@ export default function App() {
             <div class="stat-label">🎉 活动</div>
             <div class="stat-value small-stat-value">
               {activityInfo().unclaimedRewards > 0 ? `🎁${activityInfo().unclaimedRewards}` : '中心'}
+            </div>
+          </button>
+          <button 
+            class="stat-item activity-button"
+            onClick={openExhibitionCenter}
+            title="巡回展陈"
+            style={{ 'border-color': '#ff9632 !important' }}
+          >
+            <div class="stat-label">🎪 巡展</div>
+            <div class="stat-value small-stat-value">
+              {exhibitionInfo().unclaimedRewards > 0 ? `🎁${exhibitionInfo().unclaimedRewards}` : '展陈'}
             </div>
           </button>
           <button 
@@ -702,6 +716,48 @@ export default function App() {
 
       {showThemeCollection() && (
         <ThemeCollectionCenter onClose={() => setShowThemeCollection(false)} />
+      )}
+
+      {exhibitionState().showExhibitionCenter && (
+        <TouringExhibitionCenter onClose={closeExhibitionCenter} />
+      )}
+
+      {exhibitionRewardPopup() && state().state !== 'paused' && (
+        <div class="activity-reward-popup" onClick={dismissExhibitionRewardPopup}>
+          <div class="activity-reward-popup-title">🎊 巡展奖励</div>
+          <div class="activity-reward-popup-name">{exhibitionRewardPopup()?.title}</div>
+          <div class="activity-reward-popup-content">
+            {exhibitionRewardPopup()?.coins && exhibitionRewardPopup()!.coins! > 0 && (
+              <div class="reward-item">
+                <span class="reward-icon">🪙</span>
+                <span class="reward-text">+{exhibitionRewardPopup()!.coins} 金币</span>
+              </div>
+            )}
+            {exhibitionRewardPopup()?.points && exhibitionRewardPopup()!.points! > 0 && (
+              <div class="reward-item">
+                <span class="reward-icon">💎</span>
+                <span class="reward-text">+{exhibitionRewardPopup()!.points} 收藏积分</span>
+              </div>
+            )}
+            <For each={exhibitionRewardPopup()?.rewards?.filter(r => r.type === 'achievement') || []}>
+              {() => (
+                <div class="reward-item">
+                  <span class="reward-icon">🏆</span>
+                  <span class="reward-text">成就解锁</span>
+                </div>
+              )}
+            </For>
+            <For each={exhibitionRewardPopup()?.rewards?.filter(r => r.type === 'title') || []}>
+              {() => (
+                <div class="reward-item">
+                  <span class="reward-icon">👑</span>
+                  <span class="reward-text">称号解锁</span>
+                </div>
+              )}
+            </For>
+          </div>
+          <div class="reward-description">{exhibitionRewardPopup()?.description}</div>
+        </div>
       )}
     </div>
   );
