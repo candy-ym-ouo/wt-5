@@ -25,6 +25,7 @@ import {
   getCharacterSideQuests,
   getCharacterAchievementsList,
   getCharacterPanelInfo,
+  claimCharacterSideQuestReward,
 } from '../store/characterStore';
 import { getCharacterAchievementProgress } from '../utils/characterStorage';
 
@@ -67,6 +68,10 @@ export default function CharacterPanel(props: CharacterPanelProps) {
 
   const handleChoice = (choiceId: string) => {
     selectDialogueChoice(choiceId);
+  };
+
+  const handleClaimSideQuestReward = (questId: string) => {
+    claimCharacterSideQuestReward(questId);
   };
 
   const handleEndDialogue = () => {
@@ -394,6 +399,14 @@ export default function CharacterPanel(props: CharacterPanelProps) {
                 </div>
               </div>
               <div class="sidequest-status">{statusLabel[sq.status]}</div>
+              {sq.status === 'completed' && (
+                <button
+                  class="sidequest-claim-btn"
+                  onClick={() => handleClaimSideQuestReward(sq.id)}
+                >
+                  🎁 领取奖励
+                </button>
+              )}
             </div>
           );
         }}

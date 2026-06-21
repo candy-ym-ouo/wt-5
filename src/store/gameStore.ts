@@ -2850,6 +2850,15 @@ export const awardActivityPowerUps = (freeHints: number, timePeeks: number, elim
   }));
 };
 
+export const grantCharacterGameplayRewards = (score: number, hints: number): void => {
+  if (score <= 0 && hints <= 0) return;
+  setGameState(prev => ({
+    ...prev,
+    score: prev.score + Math.max(0, score),
+    hintsRemaining: prev.hintsRemaining + Math.max(0, hints),
+  }));
+};
+
 export const applyPendingQuestRewards = (): void => {
   const rewards = consumePendingQuestRewards();
   if (rewards.length === 0) return;

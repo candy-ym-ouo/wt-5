@@ -29,6 +29,7 @@ import {
   getUnlockedCharacterAchievementIds,
 } from '../utils/characterStorage';
 import { awardActivityRewards } from './storeManager';
+import { grantCharacterGameplayRewards, awardActivityPowerUps, triggerRandomEvent } from './gameStore';
 
 export const [characterState, setCharacterState] = createSignal<CharacterState>({
   ...DEFAULT_CHARACTER_STATE,
@@ -219,9 +220,32 @@ function applyDialogueEffects(characterId: string, effects: Array<{ type: string
         break;
       }
       case 'grant_reward': {
+        const rewardKind = (effect.targetId as string) || 'coins';
+        const val = effect.value || 0;
+        switch (rewardKind) {
+          case 'coins':
+            awardActivityRewards(val, 0, effect.description || '对话奖励');
+            break;
+          case 'score':
+            grantCharacterGameplayRewards(val, 0);
+            break;
+          case 'hints':
+            grantCharacterGameplayRewards(0, val);
+            break;
+          case 'freeHints':
+            awardActivityPowerUps(val, 0, 0);
+            break;
+          case 'timePeeks':
+            awardActivityPowerUps(0, val, 0);
+            break;
+          case 'eliminateWrongs':
+            awardActivityPowerUps(0, 0, val);
+            break;
+        }
         break;
       }
       case 'trigger_event': {
+        triggerRandomEvent();
         break;
       }
     }
@@ -507,6 +531,12 @@ export const claimCharacterSideQuestReward = (questId: string): CharacterQuestRe
       case 'coins':
         awardActivityRewards(reward.value, 0, `支线任务奖励: ${quest.title}`);
         break;
+      case 'score':
+        grantCharacterGameplayRewards(reward.value, 0);
+        break;
+      case 'hints':
+        grantCharacterGameplayRewards(0, reward.value);
+        break;
       case 'relationship':
         if (reward.targetId) {
           updateCharacterAffinity(reward.targetId, reward.value);
@@ -684,12 +714,10 @@ export const awardCharacterAchievementReward = (achievementId: string): boolean 
       awardActivityRewards(reward.value, 0, `成就奖励: ${ach.title}`);
       return true;
     case 'score':
-      awardActivityRewards(0, reward.value, `成就奖励: ${ach.title}`);
+      grantCharacterGameplayRewards(reward.value, 0);
       return true;
     case 'hints':
-      for (let i = 0; i < reward.value; i++) {
-        awardActivityRewards(0, 0, `成就奖励: ${ach.title}`);
-      }
+      awardActivityPowerUps(reward.value, 0, 0);
       return true;
     default:
       return false;
