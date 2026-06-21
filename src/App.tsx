@@ -14,11 +14,13 @@ import CustomerCommissionPanel from './components/CustomerCommission';
 import CodexCenter from './components/CodexCenter';
 import DailyCalendar from './components/DailyCalendar';
 import DecorationManager from './components/DecorationManager';
+import AccountProfile from './components/AccountProfile';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
 import { getCodexStateInfo, openCodex, closeCodex } from './store/codexStore';
 import { getCalendarInfo, openCalendar, closeCalendar, getCalendarIntegration } from './store/calendarStore';
+import { showAccountModal, closeAccountModal, openAccountModal, currentNickname, currentAvatar } from './store/accountStore';
 import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
@@ -207,6 +209,17 @@ export default function App() {
             <div class="stat-label">📆 日历</div>
             <div class="stat-value small-stat-value">
               {calendarInfo().unclaimedCount > 0 ? `🎁${calendarInfo().unclaimedCount}` : '查看'}
+            </div>
+          </button>
+          <button 
+            class="stat-item account-button"
+            onClick={openAccountModal}
+            title="账号档案"
+          >
+            <div class="stat-label">👤 账号</div>
+            <div class="stat-value small-stat-value">
+              <span class="account-avatar-header">{currentAvatar()}</span>
+              {currentNickname().length > 6 ? currentNickname().substring(0, 6) + '...' : currentNickname()}
             </div>
           </button>
         </div>
@@ -500,6 +513,10 @@ export default function App() {
           <div class="easter-egg-popup-title">🎊 发现隐藏彩蛋！</div>
           <div class="easter-egg-popup-desc">{codexInfo().easterEggPopup}</div>
         </div>
+      )}
+
+      {showAccountModal() && (
+        <AccountProfile onClose={closeAccountModal} />
       )}
     </div>
   );
