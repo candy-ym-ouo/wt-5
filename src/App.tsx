@@ -15,12 +15,14 @@ import CodexCenter from './components/CodexCenter';
 import DailyCalendar from './components/DailyCalendar';
 import DecorationManager from './components/DecorationManager';
 import AccountProfile from './components/AccountProfile';
+import ActivityCenter from './components/ActivityCenter';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
 import { getCodexStateInfo, openCodex, closeCodex } from './store/codexStore';
 import { getCalendarInfo, openCalendar, closeCalendar, getCalendarIntegration } from './store/calendarStore';
 import { showAccountModal, closeAccountModal, openAccountModal, currentNickname, currentAvatar } from './store/accountStore';
+import { openActivityCenter, closeActivityCenter, activityRewardPopup, dismissActivityRewardPopup, getActivityInfo } from './store/activityStore';
 import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
@@ -56,6 +58,7 @@ export default function App() {
   const codexInfo = createMemo(() => getCodexStateInfo());
   const calendarInfo = createMemo(() => getCalendarInfo());
   const calendarIntegration = createMemo(() => getCalendarIntegration());
+  const activityInfo = createMemo(() => getActivityInfo());
   const [showCalendar, setShowCalendar] = createSignal(false);
 
   return (
@@ -209,6 +212,16 @@ export default function App() {
             <div class="stat-label">📆 日历</div>
             <div class="stat-value small-stat-value">
               {calendarInfo().unclaimedCount > 0 ? `🎁${calendarInfo().unclaimedCount}` : '查看'}
+            </div>
+          </button>
+          <button 
+            class="stat-item activity-button"
+            onClick={openActivityCenter}
+            title="活动中心"
+          >
+            <div class="stat-label">🎉 活动</div>
+            <div class="stat-value small-stat-value">
+              {activityInfo().unclaimedRewards > 0 ? `🎁${activityInfo().unclaimedRewards}` : '中心'}
             </div>
           </button>
           <button 
@@ -517,6 +530,31 @@ export default function App() {
 
       {showAccountModal() && (
         <AccountProfile onClose={closeAccountModal} />
+      )}
+
+      {activityInfo().isVisible && (
+        <ActivityCenter onClose={closeActivityCenter} />
+      )}
+
+      {activityRewardPopup() && state().state !== 'paused' && (
+        <div class="activity-reward-popup" onClick={dismissActivityRewardPopup}>
+          <div class="activity-reward-popup-title">🎊 活动奖励</div>
+          <div class="activity-reward-popup-name">{activityRewardPopup()?.title}</div>
+          <div class="activity-reward-popup-content">
+            {activityRewardPopup()?.coins && activityRewardPopup()!.coins! > 0 && (
+              <div class="reward-item">
+                <span class="reward-icon">🪙</span>
+                <span class="reward-text">+{activityRewardPopup()!.coins} 金币</span>
+              </div>
+            )}
+            {activityRewardPopup()?.points && activityRewardPopup()!.points! > 0 && (
+              <div class="reward-item">
+                <span class="reward-icon">⭐</span>
+                <span class="reward-text">+{activityRewardPopup()!.points} 积分</span>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

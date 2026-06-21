@@ -117,6 +117,11 @@ import {
 import {
   recordBookFound,
 } from './codexStore';
+import {
+  processBookFound as processBookFoundForActivities,
+  processGameEnd as processGameEndForActivities,
+  getActivityIntegrationBonuses,
+} from './activityStore';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -2142,11 +2147,14 @@ export const selectBook = (bookId: string): boolean => {
     const storeBonus = getStoreBonus();
     const calendarIntegration = getCalendarIntegration();
     const calendarBonus = calendarIntegration.challengeBonus;
-    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1);
-    const score = Math.floor(baseScore * combinedScoreMultiplier);
+    const activityBonus = getActivityIntegrationBonuses();
+    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1) * activityBonus.scoreMultiplier;
+    const score = Math.floor(baseScore * combinedScoreMultiplier) + activityBonus.bonusPerBook.score;
 
     processBookFound(book, score);
     processBookFoundForCalendar(book, score);
+    const isPerfectRound = state.currentRoundWrongPicks.length === 0;
+    processBookFoundForActivities(book, score, state.hintsUsed, isPerfectRound);
 
     const newFoundGenres = [...foundGenres(), book.genre];
     setFoundGenres(newFoundGenres);
@@ -2780,6 +2788,10 @@ export const computeGameRating = (): RatingResult | null => {
 
   const rating = calculateRating(ratingInput);
   setCurrentRating(rating);
+
+  if (state.foundBooks.length > 0) {
+    processGameEndForActivities(state.score, state.foundBooks.length, state.hintsUsed);
+  }
 
   if (rating.bonusScore > 0) {
     if (state.gameMode === 'chapter') {
