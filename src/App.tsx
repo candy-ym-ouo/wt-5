@@ -16,6 +16,7 @@ import DailyCalendar from './components/DailyCalendar';
 import DecorationManager from './components/DecorationManager';
 import AccountProfile from './components/AccountProfile';
 import ActivityCenter from './components/ActivityCenter';
+import BookRepairWorkshop from './components/BookRepairWorkshop';
 import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
@@ -23,6 +24,7 @@ import { getCodexStateInfo, openCodex, closeCodex } from './store/codexStore';
 import { getCalendarInfo, openCalendar, closeCalendar, getCalendarIntegration } from './store/calendarStore';
 import { showAccountModal, closeAccountModal, openAccountModal, currentNickname, currentAvatar } from './store/accountStore';
 import { openActivityCenter, closeActivityCenter, activityRewardPopup, dismissActivityRewardPopup, getActivityInfo } from './store/activityStore';
+import { openWorkshop, closeWorkshop, getWorkshopStateInfo, showWorkshop } from './store/workshopStore';
 import StoreManager from './components/StoreManager';
 import { getDifficultyConfig } from './data/difficulty';
 import { RARITY_CONFIG } from './data/themes';
@@ -222,6 +224,16 @@ export default function App() {
             <div class="stat-label">🎉 活动</div>
             <div class="stat-value small-stat-value">
               {activityInfo().unclaimedRewards > 0 ? `🎁${activityInfo().unclaimedRewards}` : '中心'}
+            </div>
+          </button>
+          <button 
+            class="stat-item workshop-button"
+            onClick={() => openWorkshop()}
+            title="书籍修复工坊"
+          >
+            <div class="stat-label">🔧 工坊</div>
+            <div class="stat-value small-stat-value">
+              修复
             </div>
           </button>
           <button 
@@ -554,6 +566,17 @@ export default function App() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {showWorkshop() && (
+        <BookRepairWorkshop onClose={closeWorkshop} />
+      )}
+
+      {getWorkshopStateInfo().rewardPopup && state().state !== 'paused' && (
+        <div class="workshop-reward-popup">
+          <div class="workshop-reward-popup-title">📚 修复完成</div>
+          <div class="workshop-reward-popup-text">{getWorkshopStateInfo().rewardPopup}</div>
         </div>
       )}
     </div>
