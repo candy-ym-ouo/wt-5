@@ -22,7 +22,8 @@ import {
   POINTS_REWARD_SYSTEMS,
 } from '../data/activities';
 import { getTodayDateKey } from '../data/dailyChallenge';
-import { setShowRewardPopup } from './storeManager';
+import { setShowRewardPopup, awardActivityRewards } from './storeManager';
+import { awardActivityPowerUps } from './gameStore';
 
 let initialProgress = getActivityProgress();
 let initialStats = getActivityStats();
@@ -68,8 +69,11 @@ export const setActiveActivity = (activityId: string | null): void => {
 
 export const applyActivityRewards = (rewards: ActivityReward[], description: string): void => {
   let totalCoins = 0;
-  let totalScore = 0;
-  let totalHints = 0;
+  let totalReputation = 0;
+  let totalFreeHints = 0;
+  let totalTimePeeks = 0;
+  let totalEliminateWrongs = 0;
+  let totalScoreBonus = 0;
 
   for (const reward of rewards) {
     switch (reward.type) {
@@ -77,18 +81,41 @@ export const applyActivityRewards = (rewards: ActivityReward[], description: str
         totalCoins += reward.value;
         break;
       case 'score':
-        totalScore += reward.value;
+        totalScoreBonus += reward.value;
         break;
       case 'hints':
-        totalHints += reward.value;
+        totalFreeHints += reward.value;
+        break;
+      case 'points':
+      case 'title':
+      case 'decoration':
+      case 'achievement':
+      case 'multiplier':
+        break;
+      case 'powerup':
+        if (reward.powerUpType === 'free_hint') {
+          totalFreeHints += reward.value;
+        } else if (reward.powerUpType === 'time_peek') {
+          totalTimePeeks += reward.value;
+        } else if (reward.powerUpType === 'eliminate_wrong') {
+          totalEliminateWrongs += reward.value;
+        }
         break;
     }
   }
 
-  if (totalCoins > 0 || totalScore > 0 || totalHints > 0) {
+  if (totalCoins > 0 || totalReputation > 0) {
+    awardActivityRewards(totalCoins, totalReputation, description);
+  }
+
+  if (totalFreeHints > 0 || totalTimePeeks > 0 || totalEliminateWrongs > 0) {
+    awardActivityPowerUps(totalFreeHints, totalTimePeeks, totalEliminateWrongs);
+  }
+
+  if (totalCoins > 0 || totalReputation > 0 || totalFreeHints > 0 || totalTimePeeks > 0 || totalEliminateWrongs > 0 || totalScoreBonus > 0) {
     setShowRewardPopup({
       coins: totalCoins,
-      reputation: 0,
+      reputation: totalReputation,
       description: description || '活动奖励',
     });
     setTimeout(() => setShowRewardPopup(null), 3000);
@@ -233,7 +260,8 @@ export const processBookFound = (
 export const processGameEnd = (
   totalScore: number,
   totalBooksFound: number,
-  hintsUsed: number
+  hintsUsed: number,
+  isPerfectGame?: boolean
 ): ActivityGameResult => {
   const state = activityState();
   const stats = activityStats();
@@ -243,11 +271,40 @@ export const processGameEnd = (
     stats,
     totalScore,
     totalBooksFound,
-    hintsUsed
+    hintsUsed,
+    isPerfectGame
   );
 
   persistProgress(result.progress);
   persistStats(result.stats);
+
+  if (result.result.pointsTierProgress.length > 0) {
+    for (const tp of result.result.pointsTierProgress) {
+      if (tp.newlyUnlocked) {
+        const system = POINTS_REWARD_SYSTEMS.find(s => s.id === tp.systemId);
+        const tier = system?.tiers.find(t => t.id === tp.tierId);
+        if (system && tier) {
+          let coinReward = 0;
+          let pointReward = 0;
+          for (const r of tier.rewards) {
+            if (r.type === 'coins') coinReward += r.value;
+            if (r.type === 'points') pointReward += r.value;
+          }
+          setActivityRewardPopup({
+            title: `⭐ ${tier.title}`,
+            description: `${system.title} 新档位解锁！`,
+            coins: coinReward > 0 ? coinReward : undefined,
+            points: pointReward > 0 ? pointReward : undefined,
+            rewards: tier.rewards,
+            activityId: tp.systemId,
+            activityType: 'points_reward',
+          });
+          setTimeout(() => setActivityRewardPopup(null), 4000);
+          break;
+        }
+      }
+    }
+  }
 
   return result.result;
 };

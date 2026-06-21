@@ -275,3 +275,12 @@ export const awardCommissionRewards = (coins: number, reputation: number, bookTi
   });
   setTimeout(() => setShowRewardPopup(null), 2500);
 };
+
+export const awardActivityRewards = (coins: number, reputation: number, _description: string): void => {
+  if (coins <= 0 && reputation <= 0) return;
+  let state = storeState();
+  if (coins > 0) state = addCoins(state, coins);
+  if (reputation > 0) state = addReputation(state, reputation);
+  state = updateTaskProgress(state, 'earn_coins', Math.max(0, coins));
+  persistState(state);
+};

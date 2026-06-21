@@ -108,7 +108,7 @@ export const updateLimitedThemeProgress = (
 
 export const updateFestivalChallengeProgress = (
   progress: ActivityProgress,
-  updateType: 'find_books' | 'find_genre' | 'find_rarity' | 'score_threshold' | 'perfect_round' | 'no_hint_round',
+  updateType: 'find_books' | 'find_genre' | 'find_rarity' | 'score_threshold' | 'perfect_round' | 'no_hint_round' | 'daily_streak',
   value: number,
   options?: { genre?: string; rarity?: RarityLevel; score?: number }
 ): { progress: ActivityProgress; newStages: Record<string, string[]>; completedIds: string[] } => {
@@ -140,6 +140,9 @@ export const updateFestivalChallengeProgress = (
         break;
       case 'no_hint_rounds':
         shouldUpdate = updateType === 'no_hint_round';
+        break;
+      case 'daily_streak':
+        shouldUpdate = updateType === 'daily_streak';
         break;
     }
 
@@ -470,8 +473,9 @@ export const processGameEndForActivities = (
   progress: ActivityProgress,
   stats: ActivityStats,
   totalScore: number,
-  _totalBooksFound: number,
-  _hintsUsed: number
+  totalBooksFound: number,
+  hintsUsed: number,
+  isPerfectGame?: boolean
 ): {
   progress: ActivityProgress;
   stats: ActivityStats;
@@ -483,6 +487,7 @@ export const processGameEndForActivities = (
   const unlockedAchievementIds: string[] = [];
   const newFestivalStages: string[] = [];
   const pointsTierProgress: { systemId: string; tierId: string; newlyUnlocked: boolean }[] = [];
+  let activityPointsEarned = 0;
 
   const scoreThresholdResult = updateFestivalChallengeProgress(updatedProgress, 'score_threshold', 0, { score: totalScore });
   updatedProgress = scoreThresholdResult.progress;
@@ -491,13 +496,53 @@ export const processGameEndForActivities = (
     newFestivalStages.push(...stages);
   }
 
+  if (isPerfectGame) {
+    const perfectResult = updateFestivalChallengeProgress(updatedProgress, 'perfect_round', 1);
+    updatedProgress = perfectResult.progress;
+    completedActivityIds.push(...perfectResult.completedIds);
+    for (const [, stages] of Object.entries(perfectResult.newStages)) {
+      newFestivalStages.push(...stages);
+    }
+  }
+
+  if (hintsUsed === 0 && totalBooksFound > 0) {
+    const noHintResult = updateFestivalChallengeProgress(updatedProgress, 'no_hint_round', 1);
+    updatedProgress = noHintResult.progress;
+    completedActivityIds.push(...noHintResult.completedIds);
+    for (const [, stages] of Object.entries(noHintResult.newStages)) {
+      newFestivalStages.push(...stages);
+    }
+  }
+
+  const integration = computeActivityIntegration(updatedProgress);
+  activityPointsEarned = Math.floor(totalScore * integration.pointsMultiplier);
+
+  const pointsResult = updatePointsRewardProgress(updatedProgress, activityPointsEarned, {
+    booksFound: totalBooksFound,
+    scoreEarned: totalScore,
+    perfectRound: isPerfectGame || false,
+    noHint: totalBooksFound > 0 && hintsUsed === 0,
+  });
+  updatedProgress = pointsResult.progress;
+  pointsTierProgress.push(...pointsResult.tierProgress);
+
+  updatedStats.totalPointsEarned += activityPointsEarned;
+  if (completedActivityIds.length > 0) {
+    updatedStats.totalActivitiesCompleted += completedActivityIds.length;
+  }
+
   const achievementResult = checkActivityAchievements(updatedProgress, updatedStats);
   updatedProgress = achievementResult.progress;
   updatedStats = achievementResult.stats;
   unlockedAchievementIds.push(...achievementResult.unlockedAchievements);
 
+  const festivalParticipated = Object.keys(updatedProgress.festivalChallengeProgress).filter(k =>
+    updatedProgress.festivalChallengeProgress[k].currentProgress > 0
+  ).length;
+  updatedStats.totalFestivalsParticipated = Math.max(updatedStats.totalFestivalsParticipated, festivalParticipated);
+
   const result: ActivityGameResult = {
-    activityPointsEarned: 0,
+    activityPointsEarned,
     activityScoreBonus: 0,
     activityCoinBonus: 0,
     completedActivityIds: [...new Set(completedActivityIds)],

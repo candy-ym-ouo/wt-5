@@ -2790,7 +2790,8 @@ export const computeGameRating = (): RatingResult | null => {
   setCurrentRating(rating);
 
   if (state.foundBooks.length > 0) {
-    processGameEndForActivities(state.score, state.foundBooks.length, state.hintsUsed);
+    const isPerfectGame = totalWrongPicks === 0;
+    processGameEndForActivities(state.score, state.foundBooks.length, state.hintsUsed, isPerfectGame);
   }
 
   if (rating.bonusScore > 0) {
@@ -2809,6 +2810,19 @@ export const computeGameRating = (): RatingResult | null => {
   }
 
   return rating;
+};
+
+export const awardActivityPowerUps = (freeHints: number, timePeeks: number, eliminateWrongs: number): void => {
+  if (freeHints <= 0 && timePeeks <= 0 && eliminateWrongs <= 0) return;
+  setGameState(prev => ({
+    ...prev,
+    powerUps: {
+      ...prev.powerUps,
+      freeHints: prev.powerUps.freeHints + Math.max(0, freeHints),
+      timePeeks: prev.powerUps.timePeeks + Math.max(0, timePeeks),
+      eliminateWrongs: prev.powerUps.eliminateWrongs + Math.max(0, eliminateWrongs),
+    },
+  }));
 };
 
 export const resetGame = () => {
@@ -3240,22 +3254,25 @@ export const selectBookWithRarity = (bookId: string): boolean => {
     const storeBonus = getStoreBonus();
     const calendarIntegration = getCalendarIntegration();
     const calendarBonus = calendarIntegration.challengeBonus;
+    const activityBonus = getActivityIntegrationBonuses();
     
     const themeFilterResultData = calculateThemeFilterCompensation();
     setThemeFilterResult(themeFilterResultData);
 
     const diffModifier = getThemeFilterDifficultyModifier();
-    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1);
+    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1) * activityBonus.scoreMultiplier;
     const scoreAfterThemeFilter = Math.floor(
       (baseScoreWithRarity + themeFilterResultData.compensationScore) *
       themeFilterResultData.bonusMultiplier *
       diffModifier.scoreMultiplier *
       combinedScoreMultiplier
-    );
+    ) + activityBonus.bonusPerBook.score;
 
     const finalScore = Math.max(scoreAfterThemeFilter, 100);
     processBookFound(book, finalScore);
     processBookFoundForCalendar(book, finalScore);
+    const isPerfectRoundAlt = state.currentRoundWrongPicks.length === 0;
+    processBookFoundForActivities(book, finalScore, state.hintsUsed, isPerfectRoundAlt);
 
     const streakResult = handleStreakOnSuccess(Math.max(scoreAfterThemeFilter, 100));
     const totalScore = streakResult.streakBonus + Math.max(scoreAfterThemeFilter, 100);
