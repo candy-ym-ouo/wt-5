@@ -674,6 +674,8 @@ export interface SmartBookSelectionOptions {
   genreWeights?: Record<string, number>;
   rarityWeights?: Record<string, number>;
   rareBookBonusPercent?: number;
+  preferredBookIds?: string[];
+  preferredBookBoost?: number;
 }
 
 export interface SmartBookSelectionResult {

@@ -3,6 +3,7 @@ import type { GameStore, Book, Clue, ChapterTask, DifficultyLevel, DifficultyMod
 import { BOOKS } from '../data/books';
 import { createCluesForBook, buildClueContent } from '../data/clues';
 import { ACHIEVEMENTS } from '../data/achievements';
+import { CHARACTER_ACHIEVEMENTS } from '../data/characters';
 import { getChapterById, getNextChapter } from '../data/chapters';
 import {
   getDifficultyConfig,
@@ -128,6 +129,7 @@ import {
   processGameEnd as processGameEndForActivities,
   getActivityIntegrationBonuses,
 } from './activityStore';
+import { getUnlockedCharacterBookIds, updateCharacterSideQuestProgress, checkCharacterAchievements, awardCharacterAchievementReward } from './characterStore';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -1012,6 +1014,16 @@ export const checkAchievements = () => {
       }
     }
   }
+
+  const charAchResult = checkCharacterAchievements();
+  for (const charAchId of charAchResult.newlyUnlocked) {
+    const charAch = CHARACTER_ACHIEVEMENTS.find(a => a.id === charAchId);
+    if (charAch) {
+      awardCharacterAchievementReward(charAchId);
+      setShowAchievementPopup(`${charAch.icon} ${charAch.title}`);
+      setPausableTimeout('achievementPopup', () => setShowAchievementPopup(null), 3000);
+    }
+  }
 };
 
 export const checkStoryAchievements = (): string | null => {
@@ -1440,6 +1452,7 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
     genreWeights: decoModifiers.genreWeights,
     rarityWeights: decoModifiers.rarityWeights,
     rareBookBonusPercent: decoModifiers.rareBookBonus,
+    preferredBookIds: getUnlockedCharacterBookIds(),
   });
   const book = smartSelection.book;
   setupRound(book);
@@ -1510,6 +1523,7 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
       genreWeights: decoModifiers.genreWeights,
       rarityWeights: decoModifiers.rarityWeights,
       rareBookBonusPercent: decoModifiers.rareBookBonus,
+      preferredBookIds: getUnlockedCharacterBookIds(),
     });
     const book = smartSelection.book;
     setupRound(book);
@@ -2636,6 +2650,7 @@ export const nextRound = () => {
       genreWeights: decoModifiers.genreWeights,
       rarityWeights: decoModifiers.rarityWeights,
       rareBookBonusPercent: decoModifiers.rareBookBonus,
+      preferredBookIds: getUnlockedCharacterBookIds(),
     });
     const book = smartSelection.book;
     setupRound(book);
@@ -3797,6 +3812,7 @@ const generateRushBooks = (difficulty: DifficultyLevel): Book[] => {
       genreWeights: decoModifiers.genreWeights,
       rarityWeights: decoModifiers.rarityWeights,
       rareBookBonusPercent: decoModifiers.rareBookBonus,
+      preferredBookIds: getUnlockedCharacterBookIds(),
     });
     books.push(smartSelection.book);
     usedIds.push(smartSelection.book.id);
@@ -4703,6 +4719,15 @@ const triggerQuestProgressOnBookFound = (book: Book, _findTime: number, state: G
       unlockHiddenQuest(questId);
     }
   }
+
+  const foundBookIdsSoFar = [...state.foundBooks, book.id];
+  const foundGenresSoFar = foundBookIdsSoFar
+    .map(id => BOOKS.find(b => b.id === id)?.genre)
+    .filter((g): g is string => !!g);
+  updateCharacterSideQuestProgress({
+    foundBookIds: foundBookIdsSoFar,
+    foundBookGenres: foundGenresSoFar,
+  });
 };
 
 export const triggerQuestProgressOnGameEnd = (params: {
@@ -4814,4 +4839,15 @@ const triggerQuestProgressOnGameEndFromState = (state: GameStore): void => {
       unlockHiddenQuest(questId);
     }
   }
+
+  const foundBookIdsSoFar = [...state.foundBooks];
+  const foundGenresSoFar = foundBookIdsSoFar
+    .map(id => BOOKS.find(b => b.id === id)?.genre)
+    .filter((g): g is string => !!g);
+  updateCharacterSideQuestProgress({
+    foundBookIds: foundBookIdsSoFar,
+    foundBookGenres: foundGenresSoFar,
+    commissionsCompleted: state.commission.totalCommissionsCompleted,
+    gamesPlayed: gamesPlayed(),
+  });
 };

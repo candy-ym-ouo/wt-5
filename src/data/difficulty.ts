@@ -335,7 +335,11 @@ export const selectSmartTargetBook = (
     genreWeights = {},
     rarityWeights = {},
     rareBookBonusPercent = 0,
+    preferredBookIds = [],
+    preferredBookBoost = 0.6,
   } = options;
+
+  const preferredSet = new Set(preferredBookIds);
 
   let availableBooks = filterBooksByDifficulty(difficultyLevel, [
     ...excludeIds,
@@ -386,7 +390,9 @@ export const selectSmartTargetBook = (
       }
     }
 
-    return { book, diversityBoost, isNewGenre, decorationGenreBoost, decorationRarityBoost };
+    const characterBookBoost = preferredSet.has(book.id) ? preferredBookBoost : 0;
+
+    return { book, diversityBoost, isNewGenre, decorationGenreBoost, decorationRarityBoost, characterBookBoost };
   });
 
   const newGenreBooks = booksWithDiversityBoost.filter(b => b.isNewGenre);
@@ -398,11 +404,11 @@ export const selectSmartTargetBook = (
     targetFamiliarRatio
   );
 
-  const booksWithFamiliarity = booksWithDiversityBoost.map(({ book, diversityBoost, isNewGenre, decorationGenreBoost, decorationRarityBoost }) => {
+  const booksWithFamiliarity = booksWithDiversityBoost.map(({ book, diversityBoost, isNewGenre, decorationGenreBoost, decorationRarityBoost, characterBookBoost }) => {
     const familiarity = calculateBookFamiliarity(book.id, collectionEntries);
     const familiarityLevel = getFamiliarityLevel(familiarity.familiarityScore);
     
-    let score = diversityBoost + decorationGenreBoost + decorationRarityBoost;
+    let score = diversityBoost + decorationGenreBoost + decorationRarityBoost + characterBookBoost;
     
     if (shouldPreferFamiliar) {
       score += familiarity.familiarityScore * 0.5;
@@ -418,6 +424,7 @@ export const selectSmartTargetBook = (
       familiarityLevel,
       score,
       isNewGenre,
+      isInCharacterBooklist: characterBookBoost > 0,
     };
   });
 
@@ -439,7 +446,9 @@ export const selectSmartTargetBook = (
   const selected = topCandidates[Math.floor(Math.random() * topCandidates.length)];
 
   let reason = '';
-  if (hasDecorationPreference) {
+  if (selected.isInCharacterBooklist) {
+    reason = '来自角色专属书单的推荐书籍';
+  } else if (hasDecorationPreference) {
     reason = '根据书店装修偏好选择书籍';
   } else if (selected.isNewGenre) {
     reason = '选择了新类型书籍，保持多样性';

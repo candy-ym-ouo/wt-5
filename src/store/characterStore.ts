@@ -1,5 +1,5 @@
 import { createSignal, createMemo } from 'solid-js';
-import type { CharacterState, CharacterDialogueNode, CharacterDialogueTree, CharacterSideQuest, CharacterAchievement, ExclusiveBookList } from '../types/character';
+import type { CharacterState, CharacterDialogueNode, CharacterDialogueTree, CharacterSideQuest, CharacterAchievement, ExclusiveBookList, CharacterQuestReward } from '../types/character';
 import { RELATIONSHIP_THRESHOLDS, RELATIONSHIP_ORDER, DEFAULT_CHARACTER_STATE } from '../types/character';
 import {
   GAME_CHARACTERS,
@@ -24,7 +24,11 @@ import {
   getCharacterAchievementProgress,
   saveCharacterAchievementProgress,
   getUnlockedBooklistIds,
+  getCompletedDialogueCountForCharacter,
+  getUnlockedSideQuestIds,
+  getUnlockedCharacterAchievementIds,
 } from '../utils/characterStorage';
+import { awardActivityRewards } from './storeManager';
 
 export const [characterState, setCharacterState] = createSignal<CharacterState>({
   ...DEFAULT_CHARACTER_STATE,
@@ -364,3 +368,330 @@ export const getCharacterPanelInfo = createMemo(() => {
     totalAchievementCount: achievements.length,
   };
 });
+
+export const getUnlockedCharacterBookIds = (): string[] => {
+  const unlockedIds = getUnlockedBooklistIds();
+  const result: string[] = [];
+  for (const bl of EXCLUSIVE_BOOKLISTS) {
+    if (unlockedIds.has(bl.id)) {
+      result.push(...bl.bookIds);
+    }
+  }
+  return result;
+};
+
+export interface SideQuestProgressContext {
+  foundBookIds?: string[];
+  foundBookGenres?: string[];
+  commissionsCompleted?: number;
+  gamesPlayed?: number;
+}
+
+const checkObjectiveMet = (
+  obj: CharacterSideQuest['objectives'][number],
+  ctx: SideQuestProgressContext & { dialogueCtx?: { [key: string]: number } }
+): { met: boolean; progress: number } => {
+  switch (obj.type) {
+    case 'find_books': {
+      const count = ctx.foundBookIds?.length || 0;
+      return { met: count >= obj.target, progress: Math.min(count, obj.target) };
+    }
+    case 'find_specific_books': {
+      const requiredIds = (obj.params?.bookIds as string[]) || [];
+      const found = (ctx.foundBookIds || []).filter(id => requiredIds.includes(id));
+      return { met: found.length >= obj.target, progress: Math.min(found.length, obj.target) };
+    }
+    case 'complete_dialogues': {
+      const characterId = (obj.params?.characterId as string) || '';
+      let count = 0;
+      if (characterId && ctx.dialogueCtx?.[characterId] !== undefined) {
+        count = ctx.dialogueCtx[characterId];
+      } else if (ctx.dialogueCtx) {
+        count = Object.values(ctx.dialogueCtx).reduce((s, v) => s + v, 0);
+      }
+      return { met: count >= obj.target, progress: Math.min(count, obj.target) };
+    }
+    case 'reach_relationship': {
+      const characterId = (obj.params?.characterId as string) || '';
+      const requiredLevel = (obj.params?.level as string) || 'familiar';
+      const rels = getCharacterRelationships();
+      const rel = rels[characterId];
+      if (!rel) return { met: false, progress: 0 };
+      const currentIdx = RELATIONSHIP_ORDER.indexOf(rel.level);
+      const targetIdx = RELATIONSHIP_ORDER.indexOf(requiredLevel as any);
+      const met = currentIdx >= targetIdx;
+      const progress = met ? 1 : Math.min(1, (currentIdx + 1) / Math.max(1, targetIdx + 1));
+      return { met, progress };
+    }
+    case 'complete_commissions': {
+      const count = ctx.commissionsCompleted || 0;
+      return { met: count >= obj.target, progress: Math.min(count, obj.target) };
+    }
+    case 'play_games': {
+      const count = ctx.gamesPlayed || 0;
+      return { met: count >= obj.target, progress: Math.min(count, obj.target) };
+    }
+    default:
+      return { met: false, progress: 0 };
+  }
+};
+
+export const updateCharacterSideQuestProgress = (
+  context: SideQuestProgressContext
+): { newlyCompleted: string[]; newlyProgressed: string[] } => {
+  const allProgress = getSideQuestProgress();
+  const updated = { ...allProgress };
+  const newlyCompleted: string[] = [];
+  const newlyProgressed: string[] = [];
+
+  const dialogueCtx: { [key: string]: number } = {};
+  for (const char of GAME_CHARACTERS) {
+    dialogueCtx[char.id] = getCompletedDialogueCountForCharacter(char.id);
+  }
+  const fullCtx = { ...context, dialogueCtx };
+
+  for (const quest of CHARACTER_SIDE_QUESTS) {
+    const prev = updated[quest.id] || { progress: 0, status: 'locked', completedAt: undefined };
+    if (prev.status === 'claimed' || prev.status === 'completed') continue;
+
+    const unlockedIds = getUnlockedSideQuestIds();
+    if (!unlockedIds.has(quest.id) && prev.status === 'locked') continue;
+
+    let totalProgress = 0;
+    let allMet = true;
+    for (const obj of quest.objectives) {
+      const result = checkObjectiveMet(obj, fullCtx);
+      totalProgress += result.progress;
+      if (!result.met) allMet = false;
+    }
+    const normalizedProgress = quest.maxProgress > 0
+      ? Math.min(quest.maxProgress, Math.round((totalProgress / quest.objectives.length) * quest.maxProgress))
+      : quest.objectives.length;
+
+    let newStatus = prev.status;
+    if (newStatus === 'locked') newStatus = 'available';
+    if (normalizedProgress > 0 && newStatus === 'available') newStatus = 'in_progress';
+    if (allMet) newStatus = 'completed';
+
+    if (normalizedProgress !== prev.progress || newStatus !== prev.status) {
+      updated[quest.id] = {
+        progress: normalizedProgress,
+        status: newStatus,
+        completedAt: newStatus === 'completed' && prev.status !== 'completed' ? Date.now() : prev.completedAt,
+      };
+      saveSideQuestProgress(quest.id, normalizedProgress, newStatus);
+      if (normalizedProgress > (prev.progress || 0)) newlyProgressed.push(quest.id);
+      if (newStatus === 'completed' && prev.status !== 'completed') newlyCompleted.push(quest.id);
+    }
+  }
+
+  if (newlyCompleted.length > 0) {
+    setCharacterState(prev => ({ ...prev }));
+  }
+
+  return { newlyCompleted, newlyProgressed };
+};
+
+export const claimCharacterSideQuestReward = (questId: string): CharacterQuestReward[] | null => {
+  const quest = CHARACTER_SIDE_QUESTS.find(q => q.id === questId);
+  if (!quest) return null;
+
+  const allProgress = getSideQuestProgress();
+  const prog = allProgress[questId];
+  if (!prog || prog.status !== 'completed') return null;
+
+  saveSideQuestProgress(questId, prog.progress, 'claimed');
+
+  for (const reward of quest.rewards) {
+    switch (reward.type) {
+      case 'coins':
+        awardActivityRewards(reward.value, 0, `支线任务奖励: ${quest.title}`);
+        break;
+      case 'relationship':
+        if (reward.targetId) {
+          updateCharacterAffinity(reward.targetId, reward.value);
+        }
+        break;
+      case 'achievement':
+        if (reward.targetId) {
+          addUnlockedAchievement(quest.characterId, reward.targetId);
+          saveCharacterAchievementProgress(reward.targetId, {
+            unlocked: true,
+            unlockedAt: Date.now(),
+            currentProgress: 1,
+            unlockedStages: [],
+          });
+          setCharacterState(prev => ({
+            ...prev,
+            showAchievementUnlockPopup: reward.targetId!,
+          }));
+          setTimeout(() => {
+            setCharacterState(prev => ({ ...prev, showAchievementUnlockPopup: null }));
+          }, 3000);
+        }
+        break;
+    }
+  }
+
+  setCharacterState(prev => ({
+    ...prev,
+    relationships: getCharacterRelationships(),
+  }));
+
+  return quest.rewards;
+};
+
+export const checkCharacterRelationshipQuests = (): void => {
+  updateCharacterSideQuestProgress({});
+};
+
+export interface CharacterAchievementCheckResult {
+  newlyUnlocked: string[];
+  newStagesUnlocked: Record<string, string[]>;
+}
+
+const evaluateAchievementCondition = (ach: CharacterAchievement): { unlocked: boolean; progress: number; unlockedStages: string[] } => {
+  const getStageValue = (val: number, thresholds: number[]): string[] => {
+    const stages: string[] = [];
+    for (let i = 0; i < thresholds.length; i++) {
+      if (val >= thresholds[i]) {
+        stages.push(`stage_${i}`);
+      }
+    }
+    return stages;
+  };
+
+  switch (ach.condition) {
+    case 'all_relationship_familiar': {
+      const rels = getCharacterRelationships();
+      let familiarCount = 0;
+      const familiarIdx = RELATIONSHIP_ORDER.indexOf('familiar');
+      for (const char of GAME_CHARACTERS) {
+        const rel = rels[char.id];
+        const levelIdx = RELATIONSHIP_ORDER.indexOf(rel?.level || 'stranger');
+        if (levelIdx >= familiarIdx) familiarCount++;
+      }
+      const thresholds = [1, 2, 3, 4, 5, 6];
+      const unlockedStages = getStageValue(familiarCount, thresholds);
+      return { unlocked: familiarCount >= 6, progress: familiarCount, unlockedStages };
+    }
+    case 'any_relationship_confidant': {
+      const rels = getCharacterRelationships();
+      const confidantIdx = RELATIONSHIP_ORDER.indexOf('confidant');
+      for (const char of GAME_CHARACTERS) {
+        const rel = rels[char.id];
+        const levelIdx = RELATIONSHIP_ORDER.indexOf(rel?.level || 'stranger');
+        if (levelIdx >= confidantIdx) {
+          return { unlocked: true, progress: 1, unlockedStages: ['stage_0'] };
+        }
+      }
+      return { unlocked: false, progress: 0, unlockedStages: [] };
+    }
+    case 'unlock_all_booklists': {
+      const unlockedIds = getUnlockedBooklistIds();
+      const totalBooklists = EXCLUSIVE_BOOKLISTS.length;
+      const count = EXCLUSIVE_BOOKLISTS.filter(bl => unlockedIds.has(bl.id)).length;
+      const thresholds = [1, 2, 3, 4, 5, 6];
+      const unlockedStages = getStageValue(count, thresholds);
+      return { unlocked: count >= totalBooklists, progress: count, unlockedStages };
+    }
+    default: {
+      if (ach.condition.startsWith('complete_sidequest_')) {
+        const questId = ach.condition.replace('complete_sidequest_', '');
+        const prog = getSideQuestProgress()[questId];
+        const met = prog?.status === 'completed' || prog?.status === 'claimed';
+        return { unlocked: met, progress: met ? 1 : 0, unlockedStages: met ? ['stage_0'] : [] };
+      }
+      if (ach.condition.startsWith('unlock_booklist_')) {
+        const booklistId = ach.condition.replace('unlock_booklist_', '');
+        const unlockedIds = getUnlockedBooklistIds();
+        const met = unlockedIds.has(booklistId);
+        return { unlocked: met, progress: met ? 1 : 0, unlockedStages: met ? ['stage_0'] : [] };
+      }
+      if (ach.condition.startsWith('complete_dialogue_')) {
+        const dialogueId = ach.condition.replace('complete_dialogue_', '');
+        const rels = getCharacterRelationships();
+        let met = false;
+        for (const rel of Object.values(rels)) {
+          if (rel.completedDialogueTreeIds?.includes(dialogueId)) {
+            met = true;
+            break;
+          }
+        }
+        return { unlocked: met, progress: met ? 1 : 0, unlockedStages: met ? ['stage_0'] : [] };
+      }
+      return { unlocked: false, progress: 0, unlockedStages: [] };
+    }
+  }
+};
+
+export const checkCharacterAchievements = (): CharacterAchievementCheckResult => {
+  const result: CharacterAchievementCheckResult = { newlyUnlocked: [], newStagesUnlocked: {} };
+  const unlockedAchievementIds = getUnlockedCharacterAchievementIds();
+  const allProgress = getCharacterAchievementProgress();
+
+  for (const ach of CHARACTER_ACHIEVEMENTS) {
+    const evaluation = evaluateAchievementCondition(ach);
+    const prev = allProgress[ach.id] || { unlocked: false, unlockedAt: undefined, currentProgress: 0, unlockedStages: [] };
+
+    const newStages = evaluation.unlockedStages.filter(s => !prev.unlockedStages.includes(s));
+    if (newStages.length > 0) {
+      result.newStagesUnlocked[ach.id] = newStages;
+    }
+
+    if (evaluation.unlocked && !prev.unlocked) {
+      result.newlyUnlocked.push(ach.id);
+      saveCharacterAchievementProgress(ach.id, {
+        unlocked: true,
+        unlockedAt: Date.now(),
+        currentProgress: evaluation.progress,
+        unlockedStages: evaluation.unlockedStages,
+      });
+      if (!unlockedAchievementIds.has(ach.id)) {
+        addUnlockedAchievement(ach.characterId, ach.id);
+      }
+    } else if (evaluation.progress !== prev.currentProgress || newStages.length > 0) {
+      saveCharacterAchievementProgress(ach.id, {
+        unlocked: prev.unlocked || evaluation.unlocked,
+        unlockedAt: prev.unlockedAt,
+        currentProgress: evaluation.progress,
+        unlockedStages: evaluation.unlockedStages,
+      });
+    }
+  }
+
+  if (result.newlyUnlocked.length > 0) {
+    setCharacterState(p => ({
+      ...p,
+      relationships: getCharacterRelationships(),
+    }));
+  }
+
+  return result;
+};
+
+export const awardCharacterAchievementReward = (achievementId: string): boolean => {
+  const ach = CHARACTER_ACHIEVEMENTS.find(a => a.id === achievementId);
+  if (!ach?.reward) return false;
+
+  const allProgress = getCharacterAchievementProgress();
+  const prog = allProgress[achievementId];
+  if (!prog?.unlocked) return false;
+
+  const reward = ach.reward;
+  switch (reward.type) {
+    case 'coins':
+      awardActivityRewards(reward.value, 0, `成就奖励: ${ach.title}`);
+      return true;
+    case 'score':
+      awardActivityRewards(0, reward.value, `成就奖励: ${ach.title}`);
+      return true;
+    case 'hints':
+      for (let i = 0; i < reward.value; i++) {
+        awardActivityRewards(0, 0, `成就奖励: ${ach.title}`);
+      }
+      return true;
+    default:
+      return false;
+  }
+};

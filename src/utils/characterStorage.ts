@@ -176,3 +176,36 @@ export function getUnlockedBooklistIds(): Set<string> {
   const unlocks = _readJSON<Record<string, boolean>>(BOOKLIST_UNLOCK_KEY, {});
   return new Set(Object.keys(unlocks).filter(k => unlocks[k]));
 }
+
+export function getCompletedDialogueCountForCharacter(characterId: string): number {
+  const relationships = getCharacterRelationships();
+  const rel = relationships[characterId];
+  return rel?.totalDialogues || 0;
+}
+
+export function getTotalCompletedDialogues(): number {
+  const relationships = getCharacterRelationships();
+  return Object.values(relationships).reduce((sum, r) => sum + (r.totalDialogues || 0), 0);
+}
+
+export function getUnlockedSideQuestIds(): Set<string> {
+  const relationships = getCharacterRelationships();
+  const ids = new Set<string>();
+  for (const rel of Object.values(relationships)) {
+    for (const id of rel.unlockedQuestIds || []) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
+
+export function getUnlockedCharacterAchievementIds(): Set<string> {
+  const relationships = getCharacterRelationships();
+  const ids = new Set<string>();
+  for (const rel of Object.values(relationships)) {
+    for (const id of rel.unlockedAchievementIds || []) {
+      ids.add(id);
+    }
+  }
+  return ids;
+}
