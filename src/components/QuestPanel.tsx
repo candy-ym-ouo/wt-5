@@ -10,7 +10,11 @@ import {
   getQuestGroupInfo,
   getQuestStatsInfo,
   getUnclaimedQuestCount,
+  consumePendingTitleUnlocks,
+  consumePendingAchievementUnlocks,
 } from '../store/questStore';
+import { applyPendingQuestRewards } from '../store/gameStore';
+import { unlockQuestTitle, unlockQuestAchievement } from '../store/accountStore';
 
 interface QuestPanelProps {
   onClose: () => void;
@@ -33,6 +37,13 @@ export default function QuestPanel(props: QuestPanelProps) {
 
   const handleClaim = (questId: string) => {
     claimQuestReward(questId);
+    applyPendingQuestRewards();
+    for (const titleId of consumePendingTitleUnlocks()) {
+      unlockQuestTitle(titleId);
+    }
+    for (const achId of consumePendingAchievementUnlocks()) {
+      unlockQuestAchievement(achId);
+    }
   };
 
   const renderReward = (reward: QuestReward) => {

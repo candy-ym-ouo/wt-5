@@ -331,6 +331,22 @@ export const updateUnlockedTitles = (archive: AccountArchive): AccountArchive =>
   return archive;
 };
 
+export const forceUnlockTitle = (archive: AccountArchive, titleId: string): AccountArchive => {
+  if (archive.unlockedTitles.includes(titleId)) return archive;
+  return {
+    ...archive,
+    unlockedTitles: [...archive.unlockedTitles, titleId],
+  };
+};
+
+export const forceUnlockAchievement = (archive: AccountArchive, achievementId: string): AccountArchive => {
+  if (archive.unlockedAchievements.includes(achievementId)) return archive;
+  return {
+    ...archive,
+    unlockedAchievements: [...archive.unlockedAchievements, achievementId],
+  };
+};
+
 export const addGameRecord = (
   archive: AccountArchive,
   record: Omit<GameRecord, 'id'>

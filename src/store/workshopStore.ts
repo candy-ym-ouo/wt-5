@@ -13,8 +13,12 @@ import {
   isBookUnlocked,
   recordWorkshopVisit,
   getAllMaterials,
+  getRepairedBookIds,
 } from '../utils/workshopStorage';
 import { RARITY_CONFIG } from '../data/themes';
+import { updateQuestProgress, buildGameContext } from './questStore';
+import { getCoins, getStoreLevel } from './storeManager';
+import { getUnlockedCollectionCount } from '../utils/storage';
 
 const initialState: WorkshopState = {
   activeTab: 'workbench',
@@ -243,6 +247,15 @@ export const completeCurrentStage = (isPerfect: boolean = false): boolean => {
         const rarityConfig = RARITY_CONFIG[book.rarity];
         setShowRewardPopup(`🎉 修复完成！《${book.title}》已收入珍藏！${rarityConfig.icon}${rarityConfig.name}稀有度藏书已加入寻书内容池，下一局游戏可能遇到！`);
         setTimeout(() => setShowRewardPopup(null), 4000);
+        
+        const repairedIds = getRepairedBookIds();
+        const context = buildGameContext({
+          booksRepaired: repairedIds.length,
+          collectedBooks: getUnlockedCollectionCount(),
+          storeLevel: getStoreLevel(),
+          coinsEarned: getCoins(),
+        });
+        updateQuestProgress(context);
         
         const stats = getWorkshopStats();
         const progress = getWorkshopProgress();

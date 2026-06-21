@@ -28,6 +28,8 @@ import {
   addGameRecord as addRecordToArchive,
   updateChallengeRecord as updateChallengeInArchive,
   updateUnlockedTitles,
+  forceUnlockTitle as forceUnlockTitleInArchive,
+  forceUnlockAchievement as forceUnlockAchievementInArchive,
   updatePlayTime,
   exportArchive as exportArch,
   importArchive as importArch,
@@ -500,6 +502,29 @@ const getAccountState = () => ({
 });
 
 initializeAccount();
+
+export const unlockQuestTitle = (titleId: string): void => {
+  const archive = currentArchive();
+  if (!archive) return;
+  if (archive.unlockedTitles.includes(titleId)) return;
+  const updated = forceUnlockTitleInArchive(archive, titleId);
+  saveArchive(updated);
+  setCurrentArchive(updated);
+  const title = getTitleById(titleId);
+  if (title) {
+    setNewTitleUnlocked(title.title);
+    setTimeout(() => setNewTitleUnlocked(null), 4000);
+  }
+};
+
+export const unlockQuestAchievement = (achievementId: string): void => {
+  const archive = currentArchive();
+  if (!archive) return;
+  if (archive.unlockedAchievements.includes(achievementId)) return;
+  const updated = forceUnlockAchievementInArchive(archive, achievementId);
+  saveArchive(updated);
+  setCurrentArchive(updated);
+};
 
 export {
   activeSlotId,

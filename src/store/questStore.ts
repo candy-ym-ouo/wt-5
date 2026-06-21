@@ -14,6 +14,11 @@ import {
   checkPrerequisitesMet,
 } from '../utils/questStorage';
 import type { ConditionContext } from '../utils/questStorage';
+import { awardActivityRewards } from './storeManager';
+
+export const [pendingQuestRewards, setPendingQuestRewards] = createSignal<QuestReward[]>([]);
+export const [pendingTitleUnlocks, setPendingTitleUnlocks] = createSignal<string[]>([]);
+export const [pendingAchievementUnlocks, setPendingAchievementUnlocks] = createSignal<string[]>([]);
 
 let initialProgress = getQuestProgress();
 let initialStats = getQuestStats();
@@ -117,6 +122,35 @@ export const updateQuestProgress = (context: ConditionContext): {
     const prog = { ...progress[quest.id] };
 
     if (prog.status === 'locked') {
+      if (quest.hidden) {
+        let bestCurrent = 0;
+        let anyMet = false;
+        for (const condition of quest.conditions) {
+          const result = evaluateCondition(condition.type, condition.target, context, condition.params);
+          if (result.met) anyMet = true;
+          bestCurrent = Math.max(bestCurrent, result.current);
+        }
+        if (anyMet) {
+          prog.status = 'available';
+          prog.unlockedAt = Date.now();
+          progress[quest.id] = prog;
+          newlyAvailable.push(quest.id);
+          if (quest.maxProgress > 0) {
+            prog.currentProgress = Math.min(bestCurrent, quest.maxProgress);
+          }
+          let allMet = true;
+          for (const condition of quest.conditions) {
+            const result = evaluateCondition(condition.type, condition.target, context, condition.params);
+            if (!result.met) allMet = false;
+          }
+          if (allMet) {
+            prog.status = 'completed';
+            prog.completedAt = Date.now();
+            newlyCompleted.push(quest.id);
+          }
+        }
+        continue;
+      }
       const prereqMet = checkPrerequisitesMet(quest.prerequisiteQuestIds, progress);
       if (prereqMet) {
         prog.status = 'available';
@@ -207,6 +241,29 @@ export const claimQuestReward = (questId: string): QuestReward[] | null => {
 
   persistStats(stats);
 
+  if (totalCoins > 0) {
+    awardActivityRewards(totalCoins, 0, `任务奖励: ${quest.title}`);
+  }
+
+  const gameRewards: QuestReward[] = [];
+  for (const reward of quest.rewards) {
+    if (reward.type === 'score') {
+      gameRewards.push(reward);
+    } else if (reward.type === 'hints') {
+      gameRewards.push(reward);
+    } else if (reward.type === 'powerup') {
+      gameRewards.push(reward);
+    } else if (reward.type === 'title' && reward.titleId) {
+      setPendingTitleUnlocks(prev => [...prev, reward.titleId!]);
+    } else if (reward.type === 'achievement' && reward.achievementId) {
+      setPendingAchievementUnlocks(prev => [...prev, reward.achievementId!]);
+    }
+  }
+
+  if (gameRewards.length > 0) {
+    setPendingQuestRewards(prev => [...prev, ...gameRewards]);
+  }
+
   setQuestState(prev => ({
     ...prev,
     showRewardPopup: quest.rewards[0] || null,
@@ -224,12 +281,47 @@ export const claimQuestReward = (questId: string): QuestReward[] | null => {
   return quest.rewards;
 };
 
+export const consumePendingQuestRewards = (): QuestReward[] => {
+  const rewards = pendingQuestRewards();
+  if (rewards.length === 0) return [];
+  setPendingQuestRewards([]);
+  return rewards;
+};
+
+export const consumePendingTitleUnlocks = (): string[] => {
+  const titles = pendingTitleUnlocks();
+  if (titles.length === 0) return [];
+  setPendingTitleUnlocks([]);
+  return titles;
+};
+
+export const consumePendingAchievementUnlocks = (): string[] => {
+  const achievements = pendingAchievementUnlocks();
+  if (achievements.length === 0) return [];
+  setPendingAchievementUnlocks([]);
+  return achievements;
+};
+
 export const dismissQuestPopup = (): void => {
   setQuestState(prev => ({
     ...prev,
     showRewardPopup: null,
     showCompletePopup: null,
   }));
+};
+
+export const unlockHiddenQuest = (questId: string): void => {
+  const state = questState();
+  const progress = { ...state.questProgress };
+  const prog = progress[questId];
+  if (!prog || prog.status !== 'locked') return;
+
+  progress[questId] = {
+    ...prog,
+    status: 'available',
+    unlockedAt: Date.now(),
+  };
+  persistProgress(progress);
 };
 
 export const getQuestGroupInfo = createMemo((): QuestGroupInfo[] => {

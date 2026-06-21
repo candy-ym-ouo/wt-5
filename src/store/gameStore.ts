@@ -65,6 +65,8 @@ import {
   getStorageVersionInfo,
   repairAndRestore,
   sanitizeAllStorage,
+  getCompletedChaptersCount,
+  getAllChapterProgress,
 } from '../utils/storage';
 import { THEMES, getThemeById, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
 import {
@@ -88,8 +90,10 @@ import {
   getHintBonus,
   awardCommissionRewards,
   getStoreLevel,
+  getCoins,
 } from './storeManager';
-import { updateQuestProgress, buildGameContext } from './questStore';
+import { updateQuestProgress, buildGameContext, consumePendingQuestRewards, unlockHiddenQuest } from './questStore';
+import { ALL_QUESTS } from '../data/quests';
 import {
   processBookFoundForCalendar,
   getCalendarIntegration,
@@ -2798,6 +2802,8 @@ export const computeGameRating = (): RatingResult | null => {
     processGameEndForActivities(state.score, state.foundBooks.length, state.hintsUsed, isPerfectGame);
   }
 
+  triggerQuestProgressOnGameEndFromState(state);
+
   if (rating.bonusScore > 0) {
     if (state.gameMode === 'chapter') {
       setGameState(prev => ({
@@ -2825,6 +2831,45 @@ export const awardActivityPowerUps = (freeHints: number, timePeeks: number, elim
       freeHints: prev.powerUps.freeHints + Math.max(0, freeHints),
       timePeeks: prev.powerUps.timePeeks + Math.max(0, timePeeks),
       eliminateWrongs: prev.powerUps.eliminateWrongs + Math.max(0, eliminateWrongs),
+    },
+  }));
+};
+
+export const applyPendingQuestRewards = (): void => {
+  const rewards = consumePendingQuestRewards();
+  if (rewards.length === 0) return;
+
+  let addHints = 0;
+  let addScore = 0;
+  let addFreeHints = 0;
+  let addTimePeeks = 0;
+  let addEliminateWrongs = 0;
+
+  for (const reward of rewards) {
+    switch (reward.type) {
+      case 'hints':
+        addHints += reward.value;
+        break;
+      case 'score':
+        addScore += reward.value;
+        break;
+      case 'powerup':
+        if (reward.powerUpType === 'free_hint') addFreeHints += reward.value;
+        else if (reward.powerUpType === 'time_peek') addTimePeeks += reward.value;
+        else if (reward.powerUpType === 'eliminate_wrong') addEliminateWrongs += reward.value;
+        break;
+    }
+  }
+
+  setGameState(prev => ({
+    ...prev,
+    score: prev.score + addScore,
+    hintsRemaining: prev.hintsRemaining + addHints,
+    powerUps: {
+      ...prev.powerUps,
+      freeHints: prev.powerUps.freeHints + addFreeHints,
+      timePeeks: prev.powerUps.timePeeks + addTimePeeks,
+      eliminateWrongs: prev.powerUps.eliminateWrongs + addEliminateWrongs,
     },
   }));
 };
@@ -4466,6 +4511,17 @@ export const completeCommission = (bookId: string) => {
   }));
 
   setShowCommissionResultPopup(true);
+
+  if (matchResult.isMatch) {
+    const commState = gameState();
+    const context = buildGameContext({
+      commissionsCompleted: commState.commission.totalCommissionsCompleted,
+      collectedBooks: getUnlockedCollectionCount(),
+      storeLevel: getStoreLevel(),
+      coinsEarned: getCoins(),
+    });
+    updateQuestProgress(context);
+  }
 };
 
 const failCommission = () => {
@@ -4639,7 +4695,14 @@ const triggerQuestProgressOnBookFound = (book: Book, _findTime: number, state: G
     fastFinds,
   });
 
-  updateQuestProgress(context);
+  const result = updateQuestProgress(context);
+
+  for (const questId of result.newlyCompleted) {
+    const quest = ALL_QUESTS.find(q => q.id === questId);
+    if (quest?.hidden) {
+      unlockHiddenQuest(questId);
+    }
+  }
 };
 
 export const triggerQuestProgressOnGameEnd = (params: {
@@ -4683,4 +4746,72 @@ export const triggerQuestProgressOnGameEnd = (params: {
   });
 
   updateQuestProgress(context);
+};
+
+const triggerQuestProgressOnGameEndFromState = (state: GameStore): void => {
+  const completedChaptersCount = getCompletedChaptersCount();
+
+  const allChapterProgress = getAllChapterProgress();
+  const chapterCompletions: Record<string, number> = {};
+  for (const [id, prog] of Object.entries(allChapterProgress)) {
+    if ((prog as any).completedAt) {
+      chapterCompletions[id] = 1;
+    }
+  }
+
+  const difficultyGames: Record<string, number> = {};
+  if (state.difficultyLevel && (state.gameMode === 'classic' || state.gameMode === 'chapter')) {
+    difficultyGames[state.difficultyLevel] = 1;
+  }
+
+  const rushCompleted = state.gameMode === 'rush' && state.rush.completed ? 1 : 0;
+  const perfectRushCompleted = state.gameMode === 'rush' && state.rush.perfectRun ? 1 : 0;
+  const dailyGamesCompleted = state.gameMode === 'daily' ? 1 : 0;
+  const themeGamesCompleted = state.currentThemeId ? 1 : 0;
+
+  const fastFinds: Record<number, number> = {};
+  for (const t of [10, 20, 30]) {
+    fastFinds[t] = state.roundStats.findTimes.filter(ft => ft <= t).length;
+  }
+
+  const noHintRounds = state.roundStats.hintsUsedPerRound.filter(h => h === 0).length;
+
+  const rarityCounts: Record<string, number> = {};
+  for (const bookId of state.foundBooks) {
+    const book = BOOKS.find(b => b.id === bookId);
+    if (book?.rarity) rarityCounts[book.rarity] = (rarityCounts[book.rarity] || 0) + 1;
+  }
+
+  const context = buildGameContext({
+    foundBooks: state.foundBooks.length,
+    distinctGenres: foundGenres().length || new Set(state.foundBooks.map(id => BOOKS.find(b => b.id === id)?.genre).filter(Boolean)).size,
+    rarityBooksFound: rarityCounts,
+    gamesCompleted: gamesPlayed(),
+    bestScore: state.score,
+    bestStreak: state.streak.bestStreak,
+    hintsUsed: state.hintsUsed,
+    noHintRounds,
+    powerupsUsed: state.powerUps.powerUpsUsedTotal.freeHints + state.powerUps.powerUpsUsedTotal.timePeeks + state.powerUps.powerUpsUsedTotal.eliminateWrongs,
+    commissionsCompleted: state.commission.totalCommissionsCompleted,
+    collectedBooks: getUnlockedCollectionCount(),
+    chaptersCompleted: completedChaptersCount,
+    chapterCompletions,
+    difficultyGamesCompleted: difficultyGames,
+    dailyGamesCompleted,
+    rushCompleted,
+    perfectRushCompleted,
+    themeGamesCompleted,
+    storeLevel: getStoreLevel(),
+    coinsEarned: getCoins(),
+    fastFinds,
+  });
+
+  const result = updateQuestProgress(context);
+
+  for (const questId of result.newlyCompleted) {
+    const quest = ALL_QUESTS.find(q => q.id === questId);
+    if (quest?.hidden) {
+      unlockHiddenQuest(questId);
+    }
+  }
 };
