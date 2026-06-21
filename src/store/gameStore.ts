@@ -96,6 +96,7 @@ import {
   awardCommissionRewards,
   getStoreLevel,
   getCoins,
+  awardActivityRewards,
 } from './storeManager';
 import { updateQuestProgress, buildGameContext, consumePendingQuestRewards, unlockHiddenQuest } from './questStore';
 import { ALL_QUESTS } from '../data/quests';
@@ -133,6 +134,7 @@ import {
   processGameEnd as processGameEndForActivities,
   getActivityIntegrationBonuses,
 } from './activityStore';
+import { processBookFoundForExhibition, getExhibitionIntegrationBonuses } from './touringExhibitionStore';
 import { getUnlockedCharacterBookIds, updateCharacterSideQuestProgress, checkCharacterAchievements, awardCharacterAchievementReward } from './characterStore';
 import { showSettlementCenter } from './settlementStore';
 
@@ -1451,6 +1453,9 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
 
   const bonusTime = getTimeBonus();
   const bonusHints = getHintBonus();
+  const exhibitionIntegration = getExhibitionIntegrationBonuses();
+  const exhibitionTimeBonus = Math.floor(exhibitionIntegration.timeBonus);
+  const exhibitionHintBonus = Math.floor(exhibitionIntegration.hintBonus);
 
   const collectionEntries = getAllCollectionEntries();
   const smartSelection = selectSmartTargetBook({
@@ -1480,8 +1485,8 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: config.gameTime + bonusTime,
-    hintsRemaining: config.initialHints + bonusHints,
+    timeRemaining: config.gameTime + bonusTime + exhibitionTimeBonus,
+    hintsRemaining: config.initialHints + bonusHints + exhibitionHintBonus,
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: book.id,
@@ -1550,14 +1555,18 @@ export const startGameWithStreak = (inheritStreak: boolean = false) => {
     const initialScore = Math.floor(savedStreak.lastScore * (1 - STREAK_INHERIT_COST.scorePenaltyPercent / 100));
     const initialTime = Math.floor(config.gameTime * (1 - STREAK_INHERIT_COST.timePenaltyPercent / 100));
 
+    const streakExhibitionIntegration = getExhibitionIntegrationBonuses();
+    const streakExhibitionTimeBonus = Math.floor(streakExhibitionIntegration.timeBonus);
+    const streakExhibitionHintBonus = Math.floor(streakExhibitionIntegration.hintBonus);
+
     const streakTitle = getStreakTitle(savedStreak.currentStreak);
 
     setGameState(prev => ({
       ...prev,
       state: 'playing',
       score: initialScore,
-      timeRemaining: initialTime,
-      hintsRemaining: config.initialHints,
+      timeRemaining: initialTime + streakExhibitionTimeBonus,
+      hintsRemaining: config.initialHints + streakExhibitionHintBonus,
       hintsUsed: 0,
       currentLevel: 1,
       targetBookId: book.id,
@@ -1653,12 +1662,13 @@ export const startChapterGame = (chapterId: string) => {
   setGamesPlayed(newGamesPlayed);
 
   const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
+  const chapterExhibitionIntegration = getExhibitionIntegrationBonuses();
   setGameState(prev => ({
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: defaultConfig.gameTime,
-    hintsRemaining: defaultConfig.initialHints,
+    timeRemaining: defaultConfig.gameTime + Math.floor(chapterExhibitionIntegration.timeBonus),
+    hintsRemaining: defaultConfig.initialHints + Math.floor(chapterExhibitionIntegration.hintBonus),
     hintsUsed: 0,
     currentLevel: startTaskIndex + 1,
     targetBookId: book.id,
@@ -2186,13 +2196,18 @@ export const selectBook = (bookId: string): boolean => {
     const calendarIntegration = getCalendarIntegration();
     const calendarBonus = calendarIntegration.challengeBonus;
     const activityBonus = getActivityIntegrationBonuses();
-    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1) * activityBonus.scoreMultiplier;
-    const score = Math.floor(baseScore * combinedScoreMultiplier) + activityBonus.bonusPerBook.score;
+    const exhibitionBonus = getExhibitionIntegrationBonuses();
+    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1) * activityBonus.scoreMultiplier * exhibitionBonus.scoreMultiplier;
+    const score = Math.floor(baseScore * combinedScoreMultiplier) + activityBonus.bonusPerBook.score + exhibitionBonus.bonusPerBook.score;
 
     processBookFound(book, score);
     processBookFoundForCalendar(book, score);
     const isPerfectRound = state.currentRoundWrongPicks.length === 0;
     processBookFoundForActivities(book, score, state.hintsUsed, isPerfectRound);
+    const exhibitionResult = processBookFoundForExhibition(book, score);
+    if (exhibitionResult.exhibitionCoinBonus > 0) {
+      awardActivityRewards(exhibitionResult.exhibitionCoinBonus, 0, '展陈金币加成');
+    }
 
     const newFoundGenres = [...foundGenres(), book.genre];
     setFoundGenres(newFoundGenres);
@@ -2686,7 +2701,11 @@ export const nextRound = () => {
     const storeTimeBonus = getTimeBonus();
     const storeHintBonus = getHintBonus();
     
-    const totalTimeBonus = roundCompletionBonus + timeBonus + streakTimeBonus + storeTimeBonus;
+    const nextRoundExhibitionIntegration = getExhibitionIntegrationBonuses();
+    const nextRoundExhibitionTimeBonus = Math.floor(nextRoundExhibitionIntegration.timeBonus);
+    const nextRoundExhibitionHintBonus = Math.floor(nextRoundExhibitionIntegration.hintBonus);
+    
+    const totalTimeBonus = roundCompletionBonus + timeBonus + streakTimeBonus + storeTimeBonus + nextRoundExhibitionTimeBonus;
 
     if (peekInterval) {
       clearInterval(peekInterval);
@@ -2699,7 +2718,7 @@ export const nextRound = () => {
       currentLevel: prev.currentLevel + 1,
       targetBookId: book.id,
       unlockedClues: [currentClues()[0]?.id || ''],
-      hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus + storeHintBonus, newConfig.initialHints + streakHintBonus + storeHintBonus),
+      hintsRemaining: Math.min(prev.hintsRemaining + 1 + streakHintBonus + storeHintBonus + nextRoundExhibitionHintBonus, newConfig.initialHints + streakHintBonus + storeHintBonus + nextRoundExhibitionHintBonus),
       hintsUsed: 0,
       difficultyLevel: newDifficulty,
       difficultyHistory: newHistory,
@@ -3100,12 +3119,13 @@ export const startThemeGame = (themeId: string) => {
   const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
   const bonusTime = getTimeBonus();
   const bonusHints = getHintBonus();
+  const themeExhibitionIntegration = getExhibitionIntegrationBonuses();
   setGameState(prev => ({
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: defaultConfig.gameTime + bonusTime,
-    hintsRemaining: defaultConfig.initialHints + bonusHints,
+    timeRemaining: defaultConfig.gameTime + bonusTime + Math.floor(themeExhibitionIntegration.timeBonus),
+    hintsRemaining: defaultConfig.initialHints + bonusHints + Math.floor(themeExhibitionIntegration.hintBonus),
     hintsUsed: 0,
     currentLevel: foundBookIds.length + 1,
     targetBookId: book.id,
@@ -3365,19 +3385,24 @@ export const selectBookWithRarity = (bookId: string): boolean => {
     setThemeFilterResult(themeFilterResultData);
 
     const diffModifier = getThemeFilterDifficultyModifier();
-    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1) * activityBonus.scoreMultiplier;
+    const exhibitionBonusRarity = getExhibitionIntegrationBonuses();
+    const combinedScoreMultiplier = storeBonus.scoreMultiplier * (calendarBonus?.scoreMultiplier || 1) * activityBonus.scoreMultiplier * exhibitionBonusRarity.scoreMultiplier;
     const scoreAfterThemeFilter = Math.floor(
       (baseScoreWithRarity + themeFilterResultData.compensationScore) *
       themeFilterResultData.bonusMultiplier *
       diffModifier.scoreMultiplier *
       combinedScoreMultiplier
-    ) + activityBonus.bonusPerBook.score;
+    ) + activityBonus.bonusPerBook.score + exhibitionBonusRarity.bonusPerBook.score;
 
     const finalScore = Math.max(scoreAfterThemeFilter, 100);
     processBookFound(book, finalScore);
     processBookFoundForCalendar(book, finalScore);
     const isPerfectRoundAlt = state.currentRoundWrongPicks.length === 0;
     processBookFoundForActivities(book, finalScore, state.hintsUsed, isPerfectRoundAlt);
+    const exhibitionResultRarity = processBookFoundForExhibition(book, finalScore);
+    if (exhibitionResultRarity.exhibitionCoinBonus > 0) {
+      awardActivityRewards(exhibitionResultRarity.exhibitionCoinBonus, 0, '展陈金币加成');
+    }
 
     const streakResult = handleStreakOnSuccess(Math.max(scoreAfterThemeFilter, 100));
     const totalScore = streakResult.streakBonus + Math.max(scoreAfterThemeFilter, 100);
@@ -3683,13 +3708,14 @@ export const startDailyChallenge = () => {
   const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
   const bonusTime = getTimeBonus();
   const bonusHints = getHintBonus();
+  const dailyExhibitionIntegration = getExhibitionIntegrationBonuses();
   
   setGameState(prev => ({
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: defaultConfig.gameTime + bonusTime,
-    hintsRemaining: defaultConfig.initialHints + bonusHints,
+    timeRemaining: defaultConfig.gameTime + bonusTime + Math.floor(dailyExhibitionIntegration.timeBonus),
+    hintsRemaining: defaultConfig.initialHints + bonusHints + Math.floor(dailyExhibitionIntegration.hintBonus),
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: firstBook.id,
@@ -3979,6 +4005,7 @@ export const startRushGame = (difficulty?: DifficultyLevel, difficultyMode?: Dif
 
   const bonusTime = getTimeBonus();
   const bonusHints = getHintBonus();
+  const rushExhibitionIntegration = getExhibitionIntegrationBonuses();
 
   const stages: RushStage[] = books.map((book, index) => ({
     id: `rush-stage-${Date.now()}-${index}`,
@@ -3992,8 +4019,8 @@ export const startRushGame = (difficulty?: DifficultyLevel, difficultyMode?: Dif
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: config.gameTime + bonusTime,
-    hintsRemaining: config.initialHints + bonusHints,
+    timeRemaining: config.gameTime + bonusTime + Math.floor(rushExhibitionIntegration.timeBonus),
+    hintsRemaining: config.initialHints + bonusHints + Math.floor(rushExhibitionIntegration.hintBonus),
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: firstBook.id,
@@ -4474,12 +4501,14 @@ export const startCommissionGame = () => {
 
   setCommissionTimeRemaining(commission.timeLimit);
 
+  const commissionExhibitionIntegration = getExhibitionIntegrationBonuses();
+
   setGameState(prev => ({
     ...prev,
     state: 'playing',
     score: 0,
-    timeRemaining: config.gameTime,
-    hintsRemaining: config.initialHints,
+    timeRemaining: config.gameTime + Math.floor(commissionExhibitionIntegration.timeBonus),
+    hintsRemaining: config.initialHints + Math.floor(commissionExhibitionIntegration.hintBonus),
     hintsUsed: 0,
     currentLevel: 1,
     targetBookId: null,
