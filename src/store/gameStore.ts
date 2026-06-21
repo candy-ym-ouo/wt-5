@@ -66,8 +66,6 @@ import {
   getStorageVersionInfo,
   repairAndRestore,
   sanitizeAllStorage,
-  getCompletedChaptersCount,
-  getAllChapterProgress,
   updateThemeCollectionBook,
   markThemeCollectionCompleted,
   saveThemeCollectionRankEntry,
@@ -2835,12 +2833,7 @@ export const computeGameRating = (): RatingResult | null => {
   const rating = calculateRating(ratingInput);
   setCurrentRating(rating);
 
-  if (state.foundBooks.length > 0) {
-    const isPerfectGame = totalWrongPicks === 0;
-    processGameEndForActivities(state.score, state.foundBooks.length, state.hintsUsed, isPerfectGame);
-  }
 
-  triggerQuestProgressOnGameEndFromState(state);
 
   if (rating.bonusScore > 0) {
     if (state.gameMode === 'chapter') {
@@ -4871,85 +4864,6 @@ export const triggerQuestProgressOnGameEnd = (params: {
   updateQuestProgress(context);
 };
 
-const triggerQuestProgressOnGameEndFromState = (state: GameStore): void => {
-  const completedChaptersCount = getCompletedChaptersCount();
-
-  const allChapterProgress = getAllChapterProgress();
-  const chapterCompletions: Record<string, number> = {};
-  for (const [id, prog] of Object.entries(allChapterProgress)) {
-    if ((prog as any).completedAt) {
-      chapterCompletions[id] = 1;
-    }
-  }
-
-  const difficultyGames: Record<string, number> = {};
-  if (state.difficultyLevel && (state.gameMode === 'classic' || state.gameMode === 'chapter')) {
-    difficultyGames[state.difficultyLevel] = 1;
-  }
-
-  const rushCompleted = state.gameMode === 'rush' && state.rush.completed ? 1 : 0;
-  const perfectRushCompleted = state.gameMode === 'rush' && state.rush.perfectRun ? 1 : 0;
-  const dailyGamesCompleted = state.gameMode === 'daily' ? 1 : 0;
-  const themeGamesCompleted = state.currentThemeId ? 1 : 0;
-
-  const fastFinds: Record<number, number> = {};
-  for (const t of [10, 20, 30]) {
-    fastFinds[t] = state.roundStats.findTimes.filter(ft => ft <= t).length;
-  }
-
-  const noHintRounds = state.roundStats.hintsUsedPerRound.filter(h => h === 0).length;
-
-  const rarityCounts: Record<string, number> = {};
-  for (const bookId of state.foundBooks) {
-    const book = BOOKS.find(b => b.id === bookId);
-    if (book?.rarity) rarityCounts[book.rarity] = (rarityCounts[book.rarity] || 0) + 1;
-  }
-
-  const context = buildGameContext({
-    foundBooks: state.foundBooks.length,
-    distinctGenres: foundGenres().length || new Set(state.foundBooks.map(id => BOOKS.find(b => b.id === id)?.genre).filter(Boolean)).size,
-    rarityBooksFound: rarityCounts,
-    gamesCompleted: gamesPlayed(),
-    bestScore: state.score,
-    bestStreak: state.streak.bestStreak,
-    hintsUsed: state.hintsUsed,
-    noHintRounds,
-    powerupsUsed: state.powerUps.powerUpsUsedTotal.freeHints + state.powerUps.powerUpsUsedTotal.timePeeks + state.powerUps.powerUpsUsedTotal.eliminateWrongs,
-    commissionsCompleted: state.commission.totalCommissionsCompleted,
-    collectedBooks: getUnlockedCollectionCount(),
-    chaptersCompleted: completedChaptersCount,
-    chapterCompletions,
-    difficultyGamesCompleted: difficultyGames,
-    dailyGamesCompleted,
-    rushCompleted,
-    perfectRushCompleted,
-    themeGamesCompleted,
-    storeLevel: getStoreLevel(),
-    coinsEarned: getCoins(),
-    fastFinds,
-  });
-
-  const result = updateQuestProgress(context);
-
-  for (const questId of result.newlyCompleted) {
-    const quest = ALL_QUESTS.find(q => q.id === questId);
-    if (quest?.hidden) {
-      unlockHiddenQuest(questId);
-    }
-  }
-
-  const foundBookIdsSoFar = [...state.foundBooks];
-  const foundGenresSoFar = foundBookIdsSoFar
-    .map(id => BOOKS.find(b => b.id === id)?.genre)
-    .filter((g): g is string => !!g);
-  updateCharacterSideQuestProgress({
-    foundBookIds: foundBookIdsSoFar,
-    foundBookGenres: foundGenresSoFar,
-    commissionsCompleted: state.commission.totalCommissionsCompleted,
-    gamesPlayed: gamesPlayed(),
-  });
-};
-
 export const getThemeCollectionInfo = () => {
   const state = gameState();
   if (!state.currentThemeCollectionId) return null;
@@ -5159,7 +5073,7 @@ const finishThemeCollectionGame = () => {
   if (isCompleted) {
     markThemeCollectionCompleted(state.currentThemeCollectionId);
     processBookFoundForActivities(null as any, finalScore, state.hintsUsed, state.currentRoundWrongPicks.length === 0);
-    processGameEndForActivities(finalScore, state.themeCollectionFoundBooks.length, totalTimeUsed);
+    processGameEndForActivities(finalScore, state.themeCollectionFoundBooks.length, state.hintsUsed, state.currentRoundWrongPicks.length === 0);
   }
 
   saveThemeCollectionRankEntry({

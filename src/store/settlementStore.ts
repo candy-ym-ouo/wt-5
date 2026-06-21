@@ -14,7 +14,7 @@ import type {
 import {
   gameState,
 } from './gameStore';
-import { updateQuestProgress, buildGameContext, consumePendingQuestRewards, consumePendingTitleUnlocks, consumePendingAchievementUnlocks } from './questStore';
+import { pendingQuestRewards, questState } from './questStore';
 import { getActivityIntegrationBonuses, processGameEnd } from './activityStore';
 import { getCoins, getStoreLevel } from './storeManager';
 import {
@@ -27,6 +27,7 @@ import {
   getAllCollectionEntries,
   getCompletedChaptersCount,
   getAllChapterProgress,
+  safeGetAllAchievementProgress,
 } from '../utils/storage';
 import { recordGameComplete } from './accountStore';
 import { ALL_QUESTS } from '../data/quests';
@@ -34,22 +35,12 @@ import { ACHIEVEMENTS } from '../data/achievements';
 import { BOOKS } from '../data/books';
 import { THEME_COLLECTIONS, EASTER_EGGS, getAuthorByBookId } from '../data/codex';
 import {
-  getUnlockedAchievements,
-  safeGetAllAchievementProgress,
-  saveAllAchievementProgress,
-  saveUnlockedAchievements,
-  updateCollectionEntry,
-} from '../utils/storage';
-import {
   getCodexProgress,
-  saveDiscoveryRecord,
-  saveBookCodexEntry,
-  saveAuthorCodexEntry,
-  createDiscoveryRecord,
-  checkAllEasterEggs,
-  checkThemeCollectionCompletion,
+  getBookCodexEntries,
+  getAuthorCodexEntries,
+  getDiscoveryRecords,
 } from '../utils/codexStorage';
-import type { GameReplayData, Achievement, AchievementProgress } from '../types/game';
+import type { GameReplayData } from '../types/game';
 import type { DiscoveryRecord } from '../types/codex';
 
 const initialState: SettlementState = {
@@ -207,106 +198,85 @@ const processSeasonProgress = (context: SettlementContext): SeasonProgress => {
 };
 
 const processQuests = (context: SettlementContext): { results: QuestResult[]; rewards: SettlementReward[] } => {
-  const conditionCtx = buildGameContext({
-    foundBooks: context.foundBooks.length,
-    distinctGenres: context.foundGenres.length,
-    rarityBooksFound: context.rarityBooksFound,
-    gamesCompleted: getGamesPlayed() + 1,
-    bestScore: Math.max(getPersonalBest().highestScore, context.gameReplay.totalScore),
-    bestStreak: context.bestStreak,
-    hintsUsed: context.totalHintsUsed,
-    noHintRounds: context.noHintRounds,
-    powerupsUsed: context.powerupsUsed.freeHints + context.powerupsUsed.timePeeks + context.powerupsUsed.eliminateWrongs,
-    commissionsCompleted: context.commissionsCompleted,
-    booksRepaired: context.booksRepaired,
-    collectedBooks: context.collectedBooks + context.foundBooks.length,
-    chaptersCompleted: context.chaptersCompleted,
-    dailyGamesCompleted: context.dailyGamesCompleted + 1,
-    rushCompleted: context.rushCompleted,
-    perfectRushCompleted: context.perfectRushCompleted,
-    themeGamesCompleted: context.themeGamesCompleted,
-    coinsEarned: context.coinsEarned,
-    storeLevel: context.storeLevel,
-    dialoguesCompleted: context.dialoguesCompleted,
-    fastFinds: context.fastFinds,
-  });
-  
-  const questResult = updateQuestProgress(conditionCtx);
-  
   const results: QuestResult[] = [];
   const rewards: SettlementReward[] = [];
   
+  const gameStartTime = context.gameReplay.startTime;
+  const allProgress = questState().questProgress;
+  
   for (const quest of ALL_QUESTS) {
-    const progress = questResult.newlyCompleted.includes(quest.id) 
-      ? { status: 'completed' as const, currentProgress: quest.maxProgress || 1 }
-      : questResult.newlyAvailable.includes(quest.id)
-        ? { status: 'newly_available' as const, currentProgress: 0 }
-        : null;
+    const progress = allProgress[quest.id];
+    if (!progress) continue;
     
-    if (progress) {
+    const isNewlyCompleted = progress.status === 'completed' && progress.completedAt && progress.completedAt >= gameStartTime;
+    const isNewlyAvailable = progress.status === 'available' && progress.unlockedAt && progress.unlockedAt >= gameStartTime;
+    
+    if (isNewlyCompleted || isNewlyAvailable) {
       results.push({
         questId: quest.id,
         questTitle: quest.title,
         category: quest.category,
-        status: progress.status,
+        status: isNewlyCompleted ? 'completed' : 'newly_available',
         progress: progress.currentProgress,
         maxProgress: quest.maxProgress || 1,
         rewards: quest.rewards,
         claimed: false,
       });
       
-      for (const reward of quest.rewards) {
-        if (reward.type === 'coins') {
-          rewards.push({
-            type: 'coins',
-            value: reward.value,
-            label: `任务奖励: ${quest.title}`,
-            icon: '💰',
-          });
-        } else if (reward.type === 'score') {
-          rewards.push({
-            type: 'score',
-            value: reward.value,
-            label: `任务奖励: ${quest.title}`,
-            icon: '🎯',
-          });
-        } else if (reward.type === 'hints') {
-          rewards.push({
-            type: 'hints',
-            value: reward.value,
-            label: `任务奖励: ${quest.title}`,
-            icon: '💡',
-          });
-        } else if (reward.type === 'powerup' && reward.powerUpType) {
-          rewards.push({
-            type: 'powerup',
-            value: reward.value,
-            label: `任务奖励: ${quest.title}`,
-            icon: '⚡',
-            powerUpType: reward.powerUpType,
-          });
-        } else if (reward.type === 'title' && reward.titleId) {
-          rewards.push({
-            type: 'title',
-            value: 1,
-            label: `称号解锁: ${reward.titleId}`,
-            icon: '👑',
-            titleId: reward.titleId,
-          });
-        } else if (reward.type === 'achievement' && reward.achievementId) {
-          rewards.push({
-            type: 'achievement',
-            value: 1,
-            label: `成就解锁: ${reward.achievementId}`,
-            icon: '🏆',
-            achievementId: reward.achievementId,
-          });
+      if (isNewlyCompleted) {
+        for (const reward of quest.rewards) {
+          if (reward.type === 'coins') {
+            rewards.push({
+              type: 'coins',
+              value: reward.value,
+              label: `任务奖励: ${quest.title}`,
+              icon: '💰',
+            });
+          } else if (reward.type === 'score') {
+            rewards.push({
+              type: 'score',
+              value: reward.value,
+              label: `任务奖励: ${quest.title}`,
+              icon: '🎯',
+            });
+          } else if (reward.type === 'hints') {
+            rewards.push({
+              type: 'hints',
+              value: reward.value,
+              label: `任务奖励: ${quest.title}`,
+              icon: '💡',
+            });
+          } else if (reward.type === 'powerup' && reward.powerUpType) {
+            rewards.push({
+              type: 'powerup',
+              value: reward.value,
+              label: `任务奖励: ${quest.title}`,
+              icon: '⚡',
+              powerUpType: reward.powerUpType,
+            });
+          } else if (reward.type === 'title' && reward.titleId) {
+            rewards.push({
+              type: 'title',
+              value: 1,
+              label: `称号解锁: ${reward.titleId}`,
+              icon: '👑',
+              titleId: reward.titleId,
+            });
+          } else if (reward.type === 'achievement' && reward.achievementId) {
+            rewards.push({
+              type: 'achievement',
+              value: 1,
+              label: `成就解锁: ${reward.achievementId}`,
+              icon: '🏆',
+              achievementId: reward.achievementId,
+            });
+          }
         }
       }
     }
   }
   
-  const pendingRewards = consumePendingQuestRewards();
+  const pendingRewards = pendingQuestRewards();
   for (const reward of pendingRewards) {
     if (reward.type === 'coins') {
       rewards.push({
@@ -325,9 +295,6 @@ const processQuests = (context: SettlementContext): { results: QuestResult[]; re
     }
   }
   
-  consumePendingTitleUnlocks();
-  consumePendingAchievementUnlocks();
-  
   return { results, rewards };
 };
 
@@ -335,190 +302,54 @@ const processAchievements = (context: SettlementContext): { results: Achievement
   const results: AchievementResult[] = [];
   const rewards: SettlementReward[] = [];
   
-  const unlockedAchievements = [...getUnlockedAchievements()];
+  const gameStartTime = context.gameReplay.startTime;
   const allProgress = safeGetAllAchievementProgress();
-  const newProgress: Record<string, AchievementProgress> = { ...allProgress };
-  const newlyUnlocked: string[] = [];
-  const newStageUnlocks: string[] = [];
   
-  const checkAchievement = (achievement: Achievement): boolean => {
-    if (unlockedAchievements.includes(achievement.id)) return false;
+  for (const achievement of ACHIEVEMENTS) {
+    const progress = allProgress[achievement.id];
+    if (!progress) continue;
     
-    let met = false;
-    let progressValue = 0;
+    const isNewlyUnlocked = progress.unlockedAt && progress.unlockedAt >= gameStartTime;
+    const isNewlyCompleted = progress.completedAt && progress.completedAt >= gameStartTime;
     
-    switch (achievement.id) {
-      case 'first_book':
-        met = context.foundBooks.length >= 1;
-        progressValue = context.foundBooks.length;
-        break;
-      case 'bookworm':
-        progressValue = getPersonalBest().totalBooksFound + context.foundBooks.length;
-        met = progressValue >= 1;
-        break;
-      case 'speed_reader':
-        met = context.gameReplay.rounds.some(r => r.findTime <= 30);
-        progressValue = met ? 1 : 0;
-        break;
-      case 'no_hints':
-        met = context.noHintRounds >= 1 && context.foundBooks.length >= 1;
-        progressValue = met ? 1 : 0;
-        break;
-      case 'clue_collector':
-        met = context.gameReplay.rounds.some(r => r.unlockedClueTypes.length >= 7);
-        progressValue = met ? 1 : 0;
-        break;
-      case 'perfect_round':
-        met = context.foundBooks.length >= 3;
-        progressValue = context.foundBooks.length;
-        break;
-      case 'time_master':
-        met = context.isWin && context.gameReplay.totalTimeUsed < context.gameReplay.totalTimeUsed + 60;
-        progressValue = met ? 1 : 0;
-        break;
-      case 'history_buff':
-        met = context.foundGenres.includes('历史');
-        progressValue = met ? 1 : 0;
-        break;
-      case 'sci_fi_fan':
-        met = context.foundGenres.includes('科幻');
-        progressValue = met ? 1 : 0;
-        break;
-      case 'veteran':
-        progressValue = getGamesPlayed() + 1;
-        met = progressValue >= 1;
-        break;
-      case 'streak_master':
-        progressValue = context.bestStreak;
-        met = progressValue >= 1;
-        break;
-      case 'collector':
-        progressValue = context.collectedBooks + context.foundBooks.length;
-        met = progressValue >= 1;
-        break;
-      case 'genre_master':
-        progressValue = context.foundGenres.length;
-        met = progressValue >= 5;
-        break;
-      case 'personal_best_score':
-        met = context.isPersonalBest;
-        progressValue = met ? 1 : 0;
-        break;
-      case 'speed_demon':
-        met = context.gameReplay.rounds.some(r => r.findTime < 10);
-        progressValue = met ? 1 : 0;
-        break;
-      case 'purist':
-        met = (context.powerupsUsed.freeHints + context.powerupsUsed.timePeeks + context.powerupsUsed.eliminateWrongs) === 0 && context.foundBooks.length >= 1;
-        progressValue = met ? 1 : 0;
-        break;
-      default:
-        return false;
+    let newStages: string[] = [];
+    if (achievement.type === 'progressive' && achievement.stages && progress.stageUnlockTimes) {
+      newStages = achievement.stages
+        .filter(stage => {
+          const unlockTime = progress.stageUnlockTimes![stage.id];
+          return unlockTime && unlockTime >= gameStartTime;
+        })
+        .map(stage => stage.id);
     }
     
-    if (achievement.type === 'progressive' && achievement.stages) {
-      const existingProgress = newProgress[achievement.id] || {
-        achievementId: achievement.id,
-        currentProgress: 0,
-        unlockedStages: [],
-      };
-      
-      const newStages: string[] = [];
-      const now = Date.now();
-      const stageUnlockTimes = { ...(existingProgress.stageUnlockTimes || {}) };
-      
-      for (const stage of achievement.stages) {
-        if (progressValue >= stage.threshold && !existingProgress.unlockedStages.includes(stage.id)) {
-          newStages.push(stage.id);
-          stageUnlockTimes[stage.id] = now;
-          newStageUnlocks.push(achievement.id);
-        }
+    if (isNewlyUnlocked || isNewlyCompleted || newStages.length > 0) {
+      let status: 'newly_unlocked' | 'stage_unlocked' | 'progress_updated' = 'progress_updated';
+      if (isNewlyUnlocked && achievement.type !== 'progressive') {
+        status = 'newly_unlocked';
+      } else if (newStages.length > 0) {
+        status = 'stage_unlocked';
       }
-      
-      const isCompleted = achievement.stages.length > 0 &&
-        progressValue >= achievement.stages[achievement.stages.length - 1].threshold;
-      
-      if (newStages.length > 0 || progressValue > existingProgress.currentProgress) {
-        newProgress[achievement.id] = {
-          ...existingProgress,
-          currentProgress: Math.min(progressValue, achievement.maxProgress || progressValue),
-          unlockedStages: [...existingProgress.unlockedStages, ...newStages],
-          stageUnlockTimes,
-          unlockedAt: existingProgress.unlockedAt || (newStages.length > 0 ? now : undefined),
-          completedAt: isCompleted && !existingProgress.completedAt ? now : existingProgress.completedAt,
-        };
-        
-        results.push({
-          achievementId: achievement.id,
-          achievementTitle: achievement.title,
-          achievementIcon: achievement.icon,
-          type: achievement.type,
-          status: newStages.length > 0 ? 'stage_unlocked' : 'progress_updated',
-          progress: newProgress[achievement.id],
-          newStages,
-        });
-        
-        rewards.push({
-          type: 'achievement',
-          value: newStages.length,
-          label: `成就进度: ${achievement.title}`,
-          icon: achievement.icon,
-          achievementId: achievement.id,
-        });
-      }
-      
-      if (isCompleted && !unlockedAchievements.includes(achievement.id)) {
-        unlockedAchievements.push(achievement.id);
-        newlyUnlocked.push(achievement.id);
-      }
-      
-      return newStages.length > 0;
-    }
-    
-    if (met && !unlockedAchievements.includes(achievement.id)) {
-      const now = Date.now();
-      const progress: AchievementProgress = {
-        achievementId: achievement.id,
-        currentProgress: 1,
-        unlockedStages: [],
-        unlockedAt: now,
-        completedAt: now,
-      };
-      
-      newProgress[achievement.id] = progress;
-      unlockedAchievements.push(achievement.id);
-      newlyUnlocked.push(achievement.id);
       
       results.push({
         achievementId: achievement.id,
         achievementTitle: achievement.title,
         achievementIcon: achievement.icon,
         type: achievement.type,
-        status: 'newly_unlocked',
+        status,
         progress,
+        newStages,
       });
       
-      rewards.push({
-        type: 'achievement',
-        value: 1,
-        label: `成就解锁: ${achievement.title}`,
-        icon: achievement.icon,
-        achievementId: achievement.id,
-      });
-      
-      return true;
+      if (isNewlyUnlocked || newStages.length > 0) {
+        rewards.push({
+          type: 'achievement',
+          value: newStages.length > 0 ? newStages.length : 1,
+          label: `成就${newStages.length > 0 ? '阶段解锁' : '解锁'}: ${achievement.title}`,
+          icon: achievement.icon,
+          achievementId: achievement.id,
+        });
+      }
     }
-    
-    return false;
-  };
-  
-  for (const achievement of ACHIEVEMENTS) {
-    checkAchievement(achievement);
-  }
-  
-  if (newlyUnlocked.length > 0 || Object.keys(newProgress).length > 0) {
-    saveAllAchievementProgress(newProgress);
-    saveUnlockedAchievements(unlockedAchievements);
   }
   
   return { results, rewards };
@@ -527,40 +358,57 @@ const processAchievements = (context: SettlementContext): { results: Achievement
 const processCodex = (context: SettlementContext): { unlocks: CodexUnlock[]; rewards: SettlementReward[] } => {
   const unlocks: CodexUnlock[] = [];
   const rewards: SettlementReward[] = [];
-  const collectionEntries = getAllCollectionEntries();
+  
+  const gameStartTime = context.gameReplay.startTime;
+  
+  const bookEntries = getBookCodexEntries();
+  const authorEntries = getAuthorCodexEntries();
+  const allDiscoveryRecords = getDiscoveryRecords();
+  const codexProgress = getCodexProgress();
   
   for (const round of context.roundDetails) {
     const bookId = round.targetBookId;
     const book = BOOKS.find(b => b.id === bookId);
     if (!book) continue;
     
-    const isFirstDiscovery = !collectionEntries[bookId];
+    const bookEntry = bookEntries[bookId];
+    const isFirstDiscovery = bookEntry && bookEntry.firstFoundAt >= gameStartTime;
     
-    updateCollectionEntry(bookId, round.scoreEarned, round.findTime, round.hintsUsed);
+    let rarity: DiscoveryRecord['rarity'] = 'common';
+    if (book.rarity === 'epic') rarity = 'epic';
+    else if (book.rarity === 'legendary') rarity = 'legendary';
+    else if (book.rarity === 'rare') rarity = 'rare';
+    else if (book.rarity === 'uncommon') rarity = 'uncommon';
     
-    saveBookCodexEntry(bookId, {
-      totalTimesFound: 1,
-      bestScore: round.scoreEarned,
-      bestScoreDate: Date.now(),
-      fastestFind: round.findTime,
-      fastestFindDate: Date.now(),
-      fewestHints: round.hintsUsed,
-      fewestHintsDate: Date.now(),
-      relatedAchievements: [],
+    const discoveryRecord = allDiscoveryRecords.find(
+      r => r.bookId === bookId && r.timestamp >= gameStartTime
+    );
+    
+    unlocks.push({
+      type: 'book',
+      id: bookId,
+      name: book.title,
+      icon: '📚',
+      rarity,
+      isFirstDiscovery,
+      discoveryRecord,
     });
+    
+    if (isFirstDiscovery) {
+      rewards.push({
+        type: 'score',
+        value: Math.floor(round.scoreEarned * 0.1),
+        label: `首次发现奖励: ${book.title}`,
+        icon: '🎉',
+      });
+    }
     
     const author = getAuthorByBookId(bookId);
     if (author) {
-      const codexProgress = getCodexProgress();
-      const isNewAuthor = !codexProgress.discoveredAuthorIds.includes(author.id);
+      const authorEntry = authorEntries[author.id];
+      const isNewAuthor = authorEntry && authorEntry.discoveredAt >= gameStartTime;
       
-      saveAuthorCodexEntry(author.id, {
-        booksRead: [bookId],
-        triviaUnlocked: [`${author.id}_trivia_0`],
-        quotesUnlocked: [`${author.id}_quote_0`],
-      });
-      
-      if (isNewAuthor) {
+      if (isNewAuthor && !unlocks.some(u => u.id === author.id)) {
         unlocks.push({
           type: 'author',
           id: author.id,
@@ -576,47 +424,6 @@ const processCodex = (context: SettlementContext): { unlocks: CodexUnlock[]; rew
           icon: '✍️',
         });
       }
-    }
-    
-    let rarity: DiscoveryRecord['rarity'] = 'common';
-    if (book.rarity === 'epic') rarity = 'epic';
-    else if (book.rarity === 'legendary') rarity = 'legendary';
-    else if (book.rarity === 'rare') rarity = 'rare';
-    else if (book.rarity === 'uncommon') rarity = 'uncommon';
-    
-    const timeRating = round.findTime < 10 ? '闪电般' : round.findTime < 30 ? '快速' : round.findTime < 60 ? '从容' : '耐心';
-    const hintRating = round.hintsUsed === 0 ? '完全凭借自己的智慧' : 
-                       round.hintsUsed === 1 ? '只使用了一次提示' : 
-                       `使用了${round.hintsUsed}次提示`;
-    const narrative = `你在${timeRating}的时间内，${hintRating}，发现了《${book.title}》这本${book.genre}杰作。得分${round.scoreEarned}分，这是一次出色的发现！`;
-    
-    const record = createDiscoveryRecord(
-      bookId,
-      isFirstDiscovery ? 'first_find' : 'special_event',
-      { score: round.scoreEarned, timeUsed: round.findTime, hintsUsed: round.hintsUsed, difficulty: context.difficulty },
-      rarity,
-      narrative
-    );
-    
-    saveDiscoveryRecord(record);
-    
-    unlocks.push({
-      type: 'book',
-      id: bookId,
-      name: book.title,
-      icon: '📚',
-      rarity,
-      isFirstDiscovery,
-      discoveryRecord: record,
-    });
-    
-    if (isFirstDiscovery) {
-      rewards.push({
-        type: 'score',
-        value: Math.floor(round.scoreEarned * 0.1),
-        label: `首次发现奖励: ${book.title}`,
-        icon: '🎉',
-      });
     }
     
     if (round.hintsUsed === 0 && isFirstDiscovery) {
@@ -657,47 +464,49 @@ const processCodex = (context: SettlementContext): { unlocks: CodexUnlock[]; rew
   }
   
   for (const theme of THEME_COLLECTIONS) {
-    const oldProgress = getCodexProgress().completedThemeIds.includes(theme.id);
-    checkThemeCollectionCompletion(theme.id);
-    const newProgress = getCodexProgress().completedThemeIds.includes(theme.id);
-    
-    if (!oldProgress && newProgress) {
-      unlocks.push({
-        type: 'theme',
-        id: theme.id,
-        name: theme.name,
-        icon: '🎨',
-        isFirstDiscovery: true,
-      });
-      
-      rewards.push({
-        type: 'score',
-        value: 500,
-        label: `主题收集完成: ${theme.name}`,
-        icon: '🎨',
-      });
+    const isCompleted = codexProgress.completedThemeIds.includes(theme.id);
+    if (isCompleted) {
+      const alreadyAdded = unlocks.some(u => u.id === theme.id);
+      if (!alreadyAdded) {
+        unlocks.push({
+          type: 'theme',
+          id: theme.id,
+          name: theme.name,
+          icon: '🎨',
+          isFirstDiscovery: true,
+        });
+        
+        rewards.push({
+          type: 'score',
+          value: 500,
+          label: `主题收集完成: ${theme.name}`,
+          icon: '🎨',
+        });
+      }
     }
   }
   
-  const newlyUnlockedEggs = checkAllEasterEggs();
-  for (const eggId of newlyUnlockedEggs) {
+  for (const eggId of codexProgress.foundEasterEggIds) {
     const egg = EASTER_EGGS.find(e => e.id === eggId);
     if (egg) {
-      unlocks.push({
-        type: 'easter_egg',
-        id: eggId,
-        name: egg.name,
-        icon: '🥚',
-        rarity: 'legendary',
-        isFirstDiscovery: true,
-      });
-      
-      rewards.push({
-        type: 'score',
-        value: 200,
-        label: `复活节彩蛋: ${egg.name}`,
-        icon: '🥚',
-      });
+      const alreadyAdded = unlocks.some(u => u.id === eggId);
+      if (!alreadyAdded) {
+        unlocks.push({
+          type: 'easter_egg',
+          id: eggId,
+          name: egg.name,
+          icon: '🥚',
+          rarity: 'legendary',
+          isFirstDiscovery: true,
+        });
+        
+        rewards.push({
+          type: 'score',
+          value: 200,
+          label: `复活节彩蛋: ${egg.name}`,
+          icon: '🥚',
+        });
+      }
     }
   }
   
