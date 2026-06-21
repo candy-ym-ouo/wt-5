@@ -12,6 +12,7 @@ import {
   getTotalThemeCollectionsCollected,
   getAllCollectionEntries,
 } from '../utils/storage';
+import { startThemeCollectionGame, resetGame } from '../store/gameStore';
 
 interface ThemeCollectionCenterProps {
   onClose: () => void;
@@ -244,7 +245,13 @@ export default function ThemeCollectionCenter(props: ThemeCollectionCenterProps)
                           {!isUnlocked && (
                             <button
                               class="tc-start-btn"
-                              onClick={() => props.onStartChallenge?.(selectedCollection()!.id)}
+                              onClick={() => {
+                                props.onClose();
+                                setTimeout(() => {
+                                  resetGame();
+                                  startThemeCollectionGame(selectedCollection()!.id, challenge.id);
+                                }, 100);
+                              }}
                             >
                               开始挑战
                             </button>
@@ -318,6 +325,36 @@ export default function ThemeCollectionCenter(props: ThemeCollectionCenterProps)
                       );
                     })()}
                   </div>
+                </div>
+                <div class="tc-codex-actions">
+                  {(() => {
+                    const stats = getCollectionStats(selectedCollection()!);
+                    const isFinished = stats.isCompleted;
+                    return (
+                      <>
+                        <button
+                          class={`tc-action-btn ${isFinished ? 'completed' : 'primary'}`}
+                          onClick={() => {
+                            props.onClose();
+                            setTimeout(() => {
+                              resetGame();
+                              startThemeCollectionGame(selectedCollection()!.id);
+                            }, 100);
+                          }}
+                        >
+                          {isFinished ? '🔄 重新挑战' : '🎯 开始收藏'}
+                        </button>
+                        <button
+                          class="tc-action-btn secondary"
+                          onClick={() => {
+                            setActiveTab('challenge');
+                          }}
+                        >
+                          ⚔️ 专题挑战
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
                 <div class="tc-codex-books-grid">
                   <For each={selectedCollection()!.bookIds}>

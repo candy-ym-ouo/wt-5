@@ -18,7 +18,7 @@ import AccountProfile from './components/AccountProfile';
 import ActivityCenter from './components/ActivityCenter';
 import BookRepairWorkshop from './components/BookRepairWorkshop';
 import ThemeCollectionCenter from './components/ThemeCollectionCenter';
-import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo } from './store/gameStore';
+import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo, isThemeCollectionMode, getThemeCollectionInfo } from './store/gameStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
 import { getCodexStateInfo, openCodex, closeCodex } from './store/codexStore';
@@ -62,6 +62,8 @@ export default function App() {
   const isRushGameMode = createMemo(() => isRushMode());
   const isCommMode = createMemo(() => isCommissionMode());
   const commInfo = createMemo(() => getCommissionInfo());
+  const isTCMode = createMemo(() => isThemeCollectionMode());
+  const tcInfo = createMemo(() => getThemeCollectionInfo());
   const coins = createMemo(() => getCoins());
   const storeLevel = createMemo(() => getStoreLevel());
   const codexInfo = createMemo(() => getCodexStateInfo());
@@ -97,6 +99,11 @@ export default function App() {
           {isRushGameMode() && (
             <span class="rush-header-badge">
               ⚡ 闯关模式 {rushInfo()!.currentStageIndex + 1}/{rushInfo()!.total}
+            </span>
+          )}
+          {isTCMode() && tcInfo() && (
+            <span class="tc-header-badge" style={{ 'border-color': tcInfo()!.collection.color }}>
+              {tcInfo()!.collection.icon} {tcInfo()!.collection.title} {tcInfo()!.progress}/{tcInfo()!.required}
             </span>
           )}
           {isCommMode() && commInfo().activeCommission && (

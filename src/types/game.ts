@@ -487,6 +487,11 @@ export interface GameStore {
   rush: RushState;
   randomEvent: RandomEventState;
   commission: CommissionState;
+  currentThemeCollectionId: string | null;
+  themeCollectionFoundBooks: string[];
+  themeCollectionScore: number;
+  themeCollectionStartTime: number;
+  themeCollectionActiveChallengeId: string | null;
 }
 
 export interface DailyChallengeBook {

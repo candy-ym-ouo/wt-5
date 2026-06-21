@@ -39,6 +39,9 @@ import {
   isCommissionMode,
   getCommissionInfo,
   getAverageSatisfaction,
+  isThemeCollectionMode,
+  getThemeCollectionInfo,
+  nextThemeCollectionRound,
 } from '../store/gameStore';
 import RandomEventDisplay from './RandomEventDisplay';
 import { getGradeInfo } from '../data/rating';
@@ -101,6 +104,8 @@ export default function GameModal() {
   const rushInfo = createMemo(() => getRushInfo());
   const lastStageBonus = createMemo(() => lastRushStageBonus());
   const lastStageTimeBonus = createMemo(() => lastRushTimeBonus());
+  const isTCMode = createMemo(() => isThemeCollectionMode());
+  const tcInfo = createMemo(() => getThemeCollectionInfo());
   const rating = createMemo(() => currentRating());
   const gradeInfo = createMemo(() => {
     const r = rating();
@@ -737,6 +742,30 @@ export default function GameModal() {
               </div>
             )}
 
+            {isTCMode() && tcInfo() && (
+              <div class="tc-progress-summary">
+                <div class="tc-progress-label">
+                  {tcInfo()?.collection.icon} {tcInfo()?.collection.title} - 主题馆藏进度
+                </div>
+                <div class="tc-progress-bar">
+                  <div 
+                    class="tc-progress-fill"
+                    style={{ width: `${tcInfo()?.percent}%`, background: tcInfo()?.collection.color }}
+                  />
+                </div>
+                <div class="tc-progress-text">
+                  {tcInfo()?.progress} / {tcInfo()?.required} 本书籍完成
+                  {tcInfo()?.isCompleted && <span class="tc-complete-badge">✓ 馆藏完成！</span>}
+                </div>
+                {tcInfo()?.isCompleted && tcInfo()?.collection && (
+                  <div class="tc-bonus-badge">
+                    ⭐ 完成奖励：{tcInfo()!.collection.rewardCoins} 金币 / {tcInfo()!.collection.rewardReputation} 声望
+                    {tcInfo()!.collection.rewardTitle && ` / 称号「${tcInfo()!.collection.rewardTitle}」`}
+                  </div>
+                )}
+              </div>
+            )}
+
             {isDailyMode() && dailyInfo() && (
               <div class="daily-progress-summary">
                 <div class="daily-progress-label">
@@ -819,8 +848,20 @@ export default function GameModal() {
               </div>
             )}
 
-            <button class="modal-button" onClick={isThemeMode() ? nextThemeRound : nextRound}>
-              {isChapterMode() ? '下一个任务' : isThemeMode() ? '下一本书籍' : isDailyMode() ? '下一本挑战书' : isRushGameMode() && rushInfo()?.completed ? '🎉 挑战完成！' : isRushGameMode() ? '进入下一阶段 →' : '下一本书'}
+            <button class="modal-button" onClick={() => {
+              if (isTCMode()) {
+                if (tcInfo()?.isCompleted) {
+                  resetGame();
+                } else {
+                  nextThemeCollectionRound();
+                }
+              } else if (isThemeMode()) {
+                nextThemeRound();
+              } else {
+                nextRound();
+              }
+            }}>
+              {isChapterMode() ? '下一个任务' : isTCMode() ? (tcInfo()?.isCompleted ? '🎉 馆藏完成！' : '下一本书籍') : isThemeMode() ? '下一本书籍' : isDailyMode() ? '下一本挑战书' : isRushGameMode() && rushInfo()?.completed ? '🎉 挑战完成！' : isRushGameMode() ? '进入下一阶段 →' : '下一本书'}
             </button>
             <button class="modal-button secondary" onClick={() => setShowLeaderboard(true)}>
               排行榜

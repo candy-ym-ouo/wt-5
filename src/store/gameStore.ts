@@ -68,8 +68,14 @@ import {
   sanitizeAllStorage,
   getCompletedChaptersCount,
   getAllChapterProgress,
+  updateThemeCollectionBook,
+  markThemeCollectionCompleted,
+  saveThemeCollectionRankEntry,
+  unlockThemeCollectionChallenge,
+  getThemeCollectionProgress,
 } from '../utils/storage';
 import { THEMES, getThemeById, RARITY_CONFIG, getThemesForBook, THEME_REWARDS } from '../data/themes';
+import { THEME_COLLECTIONS as _THEME_COLLECTIONS, getThemeCollectionById, THEME_COLLECTION_CHALLENGES } from '../data/themeCollections';
 import {
   STREAK_REWARDS,
   getStreakTitle,
@@ -241,6 +247,11 @@ const initialStore: GameStore = {
     showCommissionPopup: false,
     lastCommissionResult: null,
   },
+  currentThemeCollectionId: null,
+  themeCollectionFoundBooks: [],
+  themeCollectionScore: 0,
+  themeCollectionStartTime: 0,
+  themeCollectionActiveChallengeId: null,
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -3498,6 +3509,56 @@ export const selectBookWithRarity = (bookId: string): boolean => {
 
       const themesForBook = getThemesForBook(bookId);
       themesForBook.forEach(t => checkThemeRewards(t.id));
+    } else if (state.currentThemeCollectionId) {
+      const collection = getThemeCollectionById(state.currentThemeCollectionId);
+      const newTCFoundBooks = [...state.themeCollectionFoundBooks, bookId];
+      const isTCCompleted = collection
+        ? newTCFoundBooks.length >= collection.requiredBooks
+        : false;
+
+      setGameState(prev => ({
+          ...prev,
+          score: prev.score + totalScore,
+          foundBooks: [...prev.foundBooks, bookId],
+          consecutiveCorrect: prev.consecutiveCorrect + 1,
+          themeCollectionFoundBooks: newTCFoundBooks,
+          themeCollectionScore: prev.themeCollectionScore + totalScore,
+          roundStats: newRoundStats,
+          roundDetails: [...prev.roundDetails, roundDetail],
+          currentRoundWrongPicks: [],
+          state: isTCCompleted ? 'won' : 'won',
+          streak: {
+            ...prev.streak,
+            currentStreak: newStreakCount,
+            bestStreak,
+            bestStreakDate,
+            totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+            currentTitleId: newTitleId,
+            streakStartTime: prev.streak.streakStartTime || Date.now(),
+          },
+          lastStreakBonus: streakResult.streakBonus,
+        }));
+
+      if (timerInterval) clearInterval(timerInterval);
+      updatePersonalBest({
+        score: gameState().score,
+        booksFound: gameState().foundBooks.length,
+        findTime,
+        hintsUsed: state.hintsUsed,
+        consecutiveCorrect: gameState().consecutiveCorrect,
+      });
+      resolveRandomEvent();
+      checkAchievements();
+      checkRandomEventAchievements();
+      checkStreakAchievements(newStreakCount);
+      computeGameRating();
+      updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
+      setCollectionCount(getUnlockedCollectionCount());
+      triggerQuestProgressOnBookFound(book, findTime, state);
+
+      const tcThemesForBook = getThemesForBook(bookId);
+      tcThemesForBook.forEach(t => checkThemeRewards(t.id));
     } else {
       setGameState(prev => ({
           ...prev,
@@ -4860,3 +4921,288 @@ const triggerQuestProgressOnGameEndFromState = (state: GameStore): void => {
     gamesPlayed: gamesPlayed(),
   });
 };
+
+export const getThemeCollectionInfo = () => {
+  const state = gameState();
+  if (!state.currentThemeCollectionId) return null;
+  const collection = getThemeCollectionById(state.currentThemeCollectionId);
+  if (!collection) return null;
+  const collected = state.themeCollectionFoundBooks.length;
+  const percent = collection.bookIds.length > 0 ? (collected / collection.bookIds.length) * 100 : 0;
+  return {
+    collection,
+    progress: collected,
+    required: collection.requiredBooks,
+    total: collection.bookIds.length,
+    percent,
+    score: state.themeCollectionScore,
+    isCompleted: collected >= collection.requiredBooks,
+    startTime: state.themeCollectionStartTime,
+    activeChallengeId: state.themeCollectionActiveChallengeId,
+  };
+};
+
+export const isThemeCollectionMode = (): boolean => {
+  return gameState().currentThemeCollectionId !== null;
+};
+
+export const startThemeCollectionGame = (collectionId: string, challengeId?: string) => {
+  const collection = getThemeCollectionById(collectionId);
+  if (!collection) return;
+
+  const progress = getThemeCollectionProgress(collectionId);
+  const foundBookIds = progress?.collectedBookIds || [];
+  const collectionEntries = getAllCollectionEntries();
+
+  const remainingBookIds = collection.bookIds.filter(id => !foundBookIds.includes(id));
+  if (remainingBookIds.length === 0) {
+    return;
+  }
+
+  const smartSelection = selectSmartBookByTheme(remainingBookIds, {
+    excludeIds: [],
+    recentBookGenres: [],
+    recentBookIds: foundBookIds,
+    collectionEntries,
+    consecutiveCorrect: 0,
+    currentLevel: foundBookIds.length + 1,
+    targetFamiliarRatio: 0.5,
+    genreDiversityWindow: 3,
+  });
+
+  if (!smartSelection) return;
+  const book = smartSelection.book;
+
+  setFoundGenres([]);
+  setupRound(book);
+
+  const newGamesPlayed = incrementGamesPlayed();
+  setGamesPlayed(newGamesPlayed);
+
+  const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
+  const bonusTime = getTimeBonus();
+  const bonusHints = getHintBonus();
+  const now = Date.now();
+
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    score: 0,
+    timeRemaining: defaultConfig.gameTime + bonusTime,
+    hintsRemaining: defaultConfig.initialHints + bonusHints,
+    hintsUsed: 0,
+    currentLevel: foundBookIds.length + 1,
+    targetBookId: book.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    foundBooks: foundBookIds,
+    consecutiveCorrect: 0,
+    gameMode: 'classic',
+    currentChapterId: null,
+    currentTaskIndex: 0,
+    chapterScore: 0,
+    chapterTimeUsed: 0,
+    chapterHintsUsed: 0,
+    difficultyLevel: DEFAULT_DIFFICULTY,
+    difficultyMode: 'fixed',
+    difficultyHistory: [DEFAULT_DIFFICULTY],
+    roundStats: {
+      findTimes: [],
+      hintsUsedPerRound: [],
+    },
+    difficultyAdjustmentReason: null,
+    showDifficultyChange: false,
+    lastTimeBonus: 0,
+    powerUps: createInitialPowerUpState(DEFAULT_DIFFICULTY),
+    currentThemeId: null,
+    themeFoundBooks: [],
+    themeScore: 0,
+    currentThemeCollectionId: collectionId,
+    themeCollectionFoundBooks: foundBookIds,
+    themeCollectionScore: progress?.bestScore || 0,
+    themeCollectionStartTime: now,
+    themeCollectionActiveChallengeId: challengeId || null,
+  }));
+
+  setGameStartTime(now);
+  startTimer();
+};
+
+export const nextThemeCollectionRound = () => {
+  const state = gameState();
+  if (!state.currentThemeCollectionId) return;
+
+  const collection = getThemeCollectionById(state.currentThemeCollectionId);
+  if (!collection) return;
+
+  const collectionEntries = getAllCollectionEntries();
+  const recentGenres = getRecentBookGenresFromHistory(state.roundDetails);
+  const remainingBookIds = collection.bookIds.filter(id => !state.themeCollectionFoundBooks.includes(id));
+
+  if (remainingBookIds.length === 0 || state.themeCollectionFoundBooks.length >= collection.requiredBooks) {
+    finishThemeCollectionGame();
+    return;
+  }
+
+  const smartSelection = selectSmartBookByTheme(remainingBookIds, {
+    excludeIds: [],
+    recentBookGenres: recentGenres,
+    recentBookIds: state.themeCollectionFoundBooks,
+    collectionEntries,
+    consecutiveCorrect: state.consecutiveCorrect,
+    currentLevel: state.themeCollectionFoundBooks.length + 1,
+    targetFamiliarRatio: 0.4,
+    genreDiversityWindow: 3,
+  });
+
+  if (!smartSelection) {
+    finishThemeCollectionGame();
+    return;
+  }
+
+  const book = smartSelection.book;
+  const config = getDifficultyConfig(state.difficultyLevel);
+  const storeTimeBonus = getTimeBonus();
+  const storeHintBonus = getHintBonus();
+
+  setupRound(book);
+
+  if (peekInterval) {
+    clearInterval(peekInterval);
+    peekInterval = null;
+  }
+
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    currentLevel: prev.themeCollectionFoundBooks.length + 1,
+    targetBookId: book.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    hintsRemaining: Math.min(prev.hintsRemaining + 1 + storeHintBonus, config.initialHints + storeHintBonus),
+    hintsUsed: 0,
+    showDifficultyChange: false,
+    timeRemaining: prev.timeRemaining + storeTimeBonus,
+    powerUps: {
+      ...prev.powerUps,
+      peekActive: false,
+      peekEndTime: 0,
+      eliminatedBookIds: [],
+      powerUpsUsedThisRound: {
+        freeHints: 0,
+        timePeeks: 0,
+        eliminateWrongs: 0,
+      },
+    },
+  }));
+
+  startTimer();
+
+  setTimeout(() => {
+    triggerRandomEvent();
+  }, 1000);
+};
+
+const finishThemeCollectionGame = () => {
+  const state = gameState();
+  if (!state.currentThemeCollectionId) return;
+
+  const collection = getThemeCollectionById(state.currentThemeCollectionId);
+  if (!collection) return;
+
+  const tcProgress = getThemeCollectionProgress(state.currentThemeCollectionId);
+  const isCompleted = state.themeCollectionFoundBooks.length >= collection.requiredBooks;
+  const totalTimeUsed = (Date.now() - state.themeCollectionStartTime) / 1000;
+  const finalScore = state.themeCollectionScore;
+
+  const newlyCollectedBooks = state.themeCollectionFoundBooks.filter(
+    id => !(tcProgress?.collectedBookIds || []).includes(id)
+  );
+
+  for (const bookId of newlyCollectedBooks) {
+    const foundBook = state.roundDetails.find(rd => rd.targetBookId === bookId);
+    updateThemeCollectionBook(
+      state.currentThemeCollectionId,
+      bookId,
+      foundBook?.scoreEarned || 0,
+      foundBook?.findTime || 0,
+      foundBook?.hintsUsed || 0
+    );
+  }
+
+  if (isCompleted) {
+    markThemeCollectionCompleted(state.currentThemeCollectionId);
+    processBookFoundForActivities(null as any, finalScore, state.hintsUsed, state.currentRoundWrongPicks.length === 0);
+    processGameEndForActivities(finalScore, state.themeCollectionFoundBooks.length, totalTimeUsed);
+  }
+
+  saveThemeCollectionRankEntry({
+    playerName: '我',
+    avatar: '📚',
+    collectionId: state.currentThemeCollectionId,
+    score: finalScore,
+    booksCollected: state.themeCollectionFoundBooks.length,
+    timeUsed: totalTimeUsed,
+    hintsUsed: state.hintsUsed,
+    date: Date.now(),
+  });
+
+  checkThemeCollectionChallenges(
+    state.currentThemeCollectionId,
+    state.themeCollectionActiveChallengeId,
+    finalScore,
+    totalTimeUsed,
+    state.hintsUsed,
+    state.themeCollectionFoundBooks.length,
+    state.wrongPenalty.penaltyHistory.length,
+    state.consecutiveCorrect
+  );
+
+  setGameState(prev => ({
+    ...prev,
+    state: 'won',
+  }));
+
+  if (timerInterval) clearInterval(timerInterval);
+};
+
+const checkThemeCollectionChallenges = (
+  _collectionId: string,
+  activeChallengeId: string | null,
+  score: number,
+  timeUsed: number,
+  hintsUsed: number,
+  _booksCollected: number,
+  wrongPicks: number,
+  streak: number
+) => {
+  if (!activeChallengeId) return;
+
+  const challenge = THEME_COLLECTION_CHALLENGES.find((c: any) => c.id === activeChallengeId);
+  if (!challenge) return;
+
+  let completed = false;
+  switch (challenge.type) {
+    case 'speed':
+      completed = timeUsed <= challenge.target;
+      break;
+    case 'accuracy':
+      completed = wrongPicks <= challenge.target;
+      break;
+    case 'no_hint':
+      completed = hintsUsed <= challenge.target;
+      break;
+    case 'streak':
+      completed = streak >= challenge.target;
+      break;
+    case 'score':
+      completed = score >= challenge.target;
+      break;
+  }
+
+  if (completed) {
+    const unlocked = unlockThemeCollectionChallenge(activeChallengeId);
+    if (unlocked) {
+      processBookFound(null as any, challenge.rewardCoins);
+    }
+  }
+};
+
