@@ -282,6 +282,7 @@ const initialStore: GameStore = {
   booklistScore: 0,
   booklistStartTime: 0,
   booklistConsecutiveCorrect: 0,
+  booklistHintsUsed: 0,
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -1884,6 +1885,12 @@ export const startGame = (difficulty?: DifficultyLevel, difficultyMode?: Difficu
     showDifficultyChange: false,
     lastTimeBonus: 0,
     powerUps: createInitialPowerUpState(diffLevel),
+    currentBooklistId: null,
+    booklistFoundBooks: [],
+    booklistScore: 0,
+    booklistStartTime: 0,
+    booklistConsecutiveCorrect: 0,
+    booklistHintsUsed: 0,
   }));
 
   startTimer();
@@ -3986,16 +3993,18 @@ export const selectBookWithRarity = (bookId: string): boolean => {
       const booklistId = state.currentBooklistId;
       const newBLFoundBooks = [...state.booklistFoundBooks, bookId];
       const newBLConsecutive = state.booklistConsecutiveCorrect + 1;
+      const accumulatedHints = state.booklistHintsUsed + state.hintsUsed;
       
       const totalFound = newBLFoundBooks.length;
       const totalTimeUsed = (Date.now() - state.booklistStartTime) / 1000;
+      const newBLScore = state.booklistScore + totalScore;
       
       updateBooklistProgress(booklistId, {
         foundBookIds: newBLFoundBooks,
         currentBookIndex: totalFound,
-        totalScore: state.booklistScore + totalScore,
+        totalScore: newBLScore,
         totalTimeUsed: totalTimeUsed,
-        totalHintsUsed: state.hintsUsed,
+        totalHintsUsed: accumulatedHints,
       });
 
       setGameState(prev => ({
@@ -4004,8 +4013,9 @@ export const selectBookWithRarity = (bookId: string): boolean => {
           foundBooks: [...prev.foundBooks, bookId],
           consecutiveCorrect: prev.consecutiveCorrect + 1,
           booklistFoundBooks: newBLFoundBooks,
-          booklistScore: prev.booklistScore + totalScore,
+          booklistScore: newBLScore,
           booklistConsecutiveCorrect: newBLConsecutive,
+          booklistHintsUsed: accumulatedHints,
           roundStats: newRoundStats,
           roundDetails: [...prev.roundDetails, roundDetail],
           currentRoundWrongPicks: [],
@@ -5647,16 +5657,9 @@ export const startBooklistGame = (booklistId: string) => {
   const allBooklists = getAllBooklists();
   const booklist = allBooklists.find(b => b.id === booklistId);
   
-  if (!booklist) return;
+  if (!booklist || booklist.bookIds.length === 0) return;
   
-  const progress = getBooklistProgress(booklistId);
-  const foundBookIds = progress?.foundBookIds || [];
-  
-  const remainingBookIds = booklist.bookIds.filter(id => !foundBookIds.includes(id));
-  
-  if (remainingBookIds.length === 0) return;
-  
-  const firstBookId = remainingBookIds[0];
+  const firstBookId = booklist.bookIds[0];
   const firstBook = BOOKS.find(b => b.id === firstBookId);
   if (!firstBook) return;
   
@@ -5710,10 +5713,11 @@ export const startBooklistGame = (booklistId: string) => {
     themeCollectionStartTime: 0,
     themeCollectionActiveChallengeId: null,
     currentBooklistId: booklistId,
-    booklistFoundBooks: foundBookIds,
-    booklistScore: progress?.bestScore || 0,
+    booklistFoundBooks: [],
+    booklistScore: 0,
     booklistStartTime: now,
     booklistConsecutiveCorrect: 0,
+    booklistHintsUsed: 0,
   }));
   
   setGameStartTime(now);
@@ -5762,6 +5766,7 @@ export const nextBooklistRound = () => {
     unlockedClues: [currentClues()[0]?.id || ''],
     hintsRemaining: Math.min(prev.hintsRemaining + 1 + storeHintBonus, config.initialHints + storeHintBonus),
     hintsUsed: 0,
+    booklistHintsUsed: prev.booklistHintsUsed + prev.hintsUsed,
     showDifficultyChange: false,
     timeRemaining: prev.timeRemaining + storeTimeBonus,
     powerUps: {
@@ -5792,11 +5797,12 @@ const finishBooklistGame = () => {
   const progress = getBooklistProgress(booklistId);
   const totalTimeUsed = (Date.now() - state.booklistStartTime) / 1000;
   const finalScore = state.booklistScore;
+  const totalHintsUsed = state.booklistHintsUsed + state.hintsUsed;
   
   updateBooklistProgress(booklistId, {
     totalScore: finalScore,
     totalTimeUsed: totalTimeUsed,
-    totalHintsUsed: state.hintsUsed,
+    totalHintsUsed: totalHintsUsed,
     completions: (progress?.completions || 0) + 1,
     completedAt: Date.now(),
   });
@@ -5833,7 +5839,7 @@ export const submitBooklistLeaderboardScore = (playerName: string) => {
     booklistId: state.currentBooklistId,
     score: state.booklistScore,
     timeUsed: (Date.now() - state.booklistStartTime) / 1000,
-    hintsUsed: state.hintsUsed,
+    hintsUsed: state.booklistHintsUsed + state.hintsUsed,
     booksFound: state.booklistFoundBooks.length,
     date: Date.now(),
   };

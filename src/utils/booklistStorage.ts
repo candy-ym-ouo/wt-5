@@ -72,7 +72,6 @@ export const updateBooklistProgress = (
   updates: Partial<BooklistProgress>
 ): BooklistProgress => {
   const existing = getBooklistProgress(booklistId);
-  const now = Date.now();
   
   const progress: BooklistProgress = existing ? { ...existing, ...updates } : {
     booklistId,
@@ -88,11 +87,6 @@ export const updateBooklistProgress = (
     completions: 0,
     ...updates,
   };
-
-  if (updates.totalScore !== undefined && updates.totalScore > progress.bestScore) {
-    progress.bestScore = updates.totalScore;
-    progress.bestScoreDate = now;
-  }
 
   saveBooklistProgress(booklistId, progress);
   return progress;

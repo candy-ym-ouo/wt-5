@@ -499,6 +499,7 @@ export interface GameStore {
   booklistScore: number;
   booklistStartTime: number;
   booklistConsecutiveCorrect: number;
+  booklistHintsUsed: number;
 }
 
 export interface DailyChallengeBook {
