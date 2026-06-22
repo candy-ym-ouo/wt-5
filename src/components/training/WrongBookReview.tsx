@@ -1,5 +1,5 @@
 import { createSignal, createMemo, For } from 'solid-js';
-import { getWrongBookList, setWrongBookFilterType, reviewCorrect, getTrainingStats } from '../../store/trainingStore';
+import { getWrongBookList, setWrongBookFilterType, reviewCorrect, getTrainingStats, getTrainingCenterState } from '../../store/trainingStore';
 import { WRONG_REASON_LABELS } from '../../types/training';
 import { BOOKS } from '../../data/books';
 import type { Book } from '../../types/game';
@@ -7,6 +7,7 @@ import type { Book } from '../../types/game';
 export default function WrongBookReview() {
   const wrongBooks = createMemo(() => getWrongBookList());
   const stats = createMemo(() => getTrainingStats());
+  const filter = createMemo(() => getTrainingCenterState().wrongBookFilter);
   const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
   const [reviewMode, setReviewMode] = useState(false);
   const [currentReviewIndex, setCurrentReviewIndex] = useState(0);
@@ -39,6 +40,16 @@ export default function WrongBookReview() {
 
   const unmasteredCount = createMemo(() => wrongBooks().filter(w => !w.mastered).length);
   const masteredCount = createMemo(() => wrongBooks().filter(w => w.mastered).length);
+  
+  const reviewBooks = createMemo(() => {
+    const currentFilter = filter();
+    if (currentFilter === 'mastered') {
+      return wrongBooks().filter(w => w.mastered);
+    } else if (currentFilter === 'unmastered') {
+      return wrongBooks().filter(w => !w.mastered);
+    }
+    return wrongBooks();
+  });
 
   const getBookDetail = (bookId: string): Book | undefined => {
     return BOOKS.find(b => b.id === bookId);
@@ -56,7 +67,7 @@ export default function WrongBookReview() {
   };
 
   const handleStartReview = () => {
-    if (unmasteredCount() === 0) return;
+    if (reviewBooks().length === 0) return;
     setReviewMode(true);
     setCurrentReviewIndex(0);
     setReviewCorrectCount(0);
@@ -64,15 +75,15 @@ export default function WrongBookReview() {
   };
 
   const handleReviewAnswer = (isCorrect: boolean) => {
-    const unmasteredBooks = wrongBooks().filter(w => !w.mastered);
-    const currentBook = unmasteredBooks[currentReviewIndex()];
+    const books = reviewBooks();
+    const currentBook = books[currentReviewIndex()];
     
     if (isCorrect && currentBook) {
       reviewCorrect(currentBook.bookId);
       setReviewCorrectCount(prev => prev + 1);
     }
 
-    if (currentReviewIndex() < unmasteredBooks.length - 1) {
+    if (currentReviewIndex() < books.length - 1) {
       setCurrentReviewIndex(prev => prev + 1);
     } else {
       setShowReviewResult(true);
@@ -93,7 +104,7 @@ export default function WrongBookReview() {
   ];
 
   if (reviewMode() && showReviewResult()) {
-    const total = wrongBooks().filter(w => !w.mastered).length;
+    const total = reviewBooks().length;
     const correct = reviewCorrectCount();
     const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
 
@@ -142,10 +153,10 @@ export default function WrongBookReview() {
   }
 
   if (reviewMode()) {
-    const unmasteredBooks = wrongBooks().filter(w => !w.mastered);
-    const currentWrongBook = unmasteredBooks[currentReviewIndex()];
+    const books = reviewBooks();
+    const currentWrongBook = books[currentReviewIndex()];
     const currentBook = currentWrongBook ? getBookDetail(currentWrongBook.bookId) : null;
-    const progress = ((currentReviewIndex() + 1) / unmasteredBooks.length) * 100;
+    const progress = books.length > 0 ? ((currentReviewIndex() + 1) / books.length) * 100 : 0;
 
     if (!currentBook) {
       return (
@@ -167,7 +178,7 @@ export default function WrongBookReview() {
             ← 退出复习
           </button>
           <div class="review-progress-info">
-            <span>第 {currentReviewIndex() + 1} / {unmasteredBooks.length} 题</span>
+            <span>第 {currentReviewIndex() + 1} / {books.length} 题</span>
           </div>
           <div class="review-progress-bar">
             <div class="review-progress-fill" style={{ width: `${progress}%` }} />
@@ -253,7 +264,7 @@ export default function WrongBookReview() {
           <For each={filterTabs}>
             {(tab) => (
               <button
-                class={`filter-tab small ${wrongBookFilter() === tab.id ? 'active' : ''}`}
+                class={`filter-tab small ${filter() === tab.id ? 'active' : ''}`}
                 onClick={() => setWrongBookFilterType(tab.id as any)}
               >
                 {tab.icon} {tab.label}
@@ -274,9 +285,9 @@ export default function WrongBookReview() {
         <button 
           class="start-review-btn"
           onClick={handleStartReview}
-          disabled={unmasteredCount() === 0}
+          disabled={reviewBooks().length === 0}
         >
-          🔄 开始复习
+          🔄 {filter() === 'all' ? '开始复习' : filter() === 'unmastered' ? '复习待掌握' : '复习已掌握'}
         </button>
       </div>
 
@@ -373,8 +384,4 @@ export default function WrongBookReview() {
       )}
     </div>
   );
-}
-
-function wrongBookFilter(): string {
-  return 'all';
 }

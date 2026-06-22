@@ -6,9 +6,11 @@ import RulesLearning from './training/RulesLearning';
 import PracticeCenter from './training/PracticeCenter';
 import WrongBookReview from './training/WrongBookReview';
 import DifficultyRecommend from './training/DifficultyRecommend';
+import type { DifficultyLevel } from '../types/game';
 
 interface TrainingCenterProps {
   onClose: () => void;
+  onStartGame?: (difficulty: DifficultyLevel) => void;
 }
 
 const TABS: { id: TrainingTab; label: string; icon: string; description: string }[] = [
@@ -142,7 +144,7 @@ export default function TrainingCenter(props: TrainingCenterProps) {
           {state().activeTab === 'rules' && <RulesLearning />}
           {state().activeTab === 'practice' && <PracticeCenter />}
           {state().activeTab === 'wrongBook' && <WrongBookReview />}
-          {state().activeTab === 'recommend' && <DifficultyRecommend />}
+          {state().activeTab === 'recommend' && <DifficultyRecommend onStartGame={props.onStartGame} />}
         </div>
       </div>
     </div>

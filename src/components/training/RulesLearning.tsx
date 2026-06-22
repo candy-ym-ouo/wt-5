@@ -1,13 +1,13 @@
 import { createSignal, createMemo, For } from 'solid-js';
 import type { RuleLesson } from '../../types/training';
-import { getLessons, getSelectedLesson, selectLesson, completeLesson, passQuiz, startQuiz, endQuiz } from '../../store/trainingStore';
+import { getLessons, getSelectedLesson, selectLesson, completeLesson, passQuiz, startQuiz, endQuiz, getTrainingCenterState } from '../../store/trainingStore';
 import { LESSON_CATEGORIES } from '../../data/training';
 
 export default function RulesLearning() {
   const lessons = createMemo(() => getLessons());
   const selectedLesson = createMemo(() => getSelectedLesson());
   const [currentQuizIndex, setCurrentQuizIndex] = createSignal(0);
-  const [quizAnswers, setQuizAnswers] = createSignal<number[]>([]);
+  const [quizAnswers, setQuizAnswers] = createSignal<(number | number[])[]>([]);
   const [showResult, setShowResult] = createSignal(false);
   const [quizScore, setQuizScore] = createSignal(0);
 
@@ -27,6 +27,30 @@ export default function RulesLearning() {
     if (!lesson?.quiz) return null;
     return lesson.quiz.questions[currentQuizIndex()] || null;
   });
+
+  const isOptionSelected = (optionIndex: number): boolean => {
+    const question = currentQuestion();
+    if (!question) return false;
+    
+    const answer = quizAnswers()[currentQuizIndex()];
+    if (question.type === 'single' || question.type === 'truefalse') {
+      return answer === optionIndex;
+    } else {
+      return Array.isArray(answer) && answer.includes(optionIndex);
+    }
+  };
+
+  const isCurrentQuestionAnswered = (): boolean => {
+    const question = currentQuestion();
+    if (!question) return false;
+    
+    const answer = quizAnswers()[currentQuizIndex()];
+    if (question.type === 'single' || question.type === 'truefalse') {
+      return typeof answer === 'number';
+    } else {
+      return Array.isArray(answer) && answer.length > 0;
+    }
+  };
 
   const handleSelectLesson = (lessonId: string) => {
     const lesson = lessons().find(l => l.id === lessonId);
@@ -56,11 +80,21 @@ export default function RulesLearning() {
     } else {
       const newAnswers = [...quizAnswers()];
       const current = newAnswers[currentQuizIndex()];
-      if (current === optionIndex) {
-        newAnswers[currentQuizIndex()] = -1;
+      let selected: number[];
+      
+      if (Array.isArray(current)) {
+        selected = [...current];
+        const idx = selected.indexOf(optionIndex);
+        if (idx >= 0) {
+          selected.splice(idx, 1);
+        } else {
+          selected.push(optionIndex);
+        }
       } else {
-        newAnswers[currentQuizIndex()] = optionIndex;
+        selected = [optionIndex];
       }
+      
+      newAnswers[currentQuizIndex()] = selected;
       setQuizAnswers(newAnswers);
     }
   };
@@ -88,19 +122,25 @@ export default function RulesLearning() {
 
     let correctCount = 0;
     const questions = lesson.quiz.questions;
+    const answers = quizAnswers();
     
     for (let i = 0; i < questions.length; i++) {
       const q = questions[i];
-      const answer = quizAnswers()[i];
+      const answer = answers[i];
+      
       if (q.type === 'single' || q.type === 'truefalse') {
-        if (q.correctAnswers.includes(answer)) {
+        if (typeof answer === 'number' && q.correctAnswers.includes(answer)) {
           correctCount++;
         }
       } else {
-        const allCorrect = q.correctAnswers.every(ca => quizAnswers().includes(ca));
-        const noWrong = !quizAnswers().some(a => !q.correctAnswers.includes(a) && a !== -1);
-        if (allCorrect && noWrong) {
-          correctCount++;
+        if (Array.isArray(answer) && answer.length > 0) {
+          const userAnswerSet = new Set(answer);
+          const correctSet = new Set(q.correctAnswers);
+          
+          if (userAnswerSet.size === correctSet.size && 
+              [...userAnswerSet].every(a => correctSet.has(a))) {
+            correctCount++;
+          }
         }
       }
     }
@@ -195,7 +235,7 @@ export default function RulesLearning() {
             <For each={question.options}>
               {(option, index) => (
                 <button
-                  class={`quiz-option ${quizAnswers()[currentQuizIndex()] === index() ? 'selected' : ''}`}
+                  class={`quiz-option ${isOptionSelected(index()) ? 'selected' : ''}`}
                   onClick={() => handleSelectAnswer(index())}
                 >
                   <span class="option-index">{String.fromCharCode(65 + index())}</span>
@@ -217,7 +257,7 @@ export default function RulesLearning() {
           <button 
             class="modal-button primary" 
             onClick={handleNextQuestion}
-            disabled={quizAnswers()[currentQuizIndex()] === undefined}
+            disabled={!isCurrentQuestionAnswered()}
           >
             {isLastQuestion ? '提交答案' : '下一题'}
           </button>
@@ -376,8 +416,4 @@ export default function RulesLearning() {
       </For>
     </div>
   );
-}
-
-function getTrainingCenterState() {
-  return { quizActive: false };
 }

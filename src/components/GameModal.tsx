@@ -25,6 +25,7 @@ import {
   getCommissionInfo,
   getAverageSatisfaction,
 } from '../store/gameStore';
+import { generateDifficultyRecommendation, getTrainingStats, openTrainingCenter } from '../store/trainingStore';
 import RandomEventDisplay from './RandomEventDisplay';
 import AnomalyEventDisplay from './AnomalyEventDisplay';
 import Leaderboard from './Leaderboard';
@@ -229,6 +230,62 @@ export default function GameModal() {
             <div class="modal-subtitle">
               选择适合你的挑战难度，或开启动态难度让系统自动调整。
             </div>
+
+            {(() => {
+              const recommendation = generateDifficultyRecommendation();
+              const stats = getTrainingStats();
+              const hasTrainingData = stats.totalCorrectAnswers > 0 || stats.completedLessons > 0;
+              const recConfig = DIFFICULTY_CONFIGS[recommendation.recommendedLevel];
+              const confidencePercent = Math.round(recommendation.confidence * 100);
+              
+              if (hasTrainingData) {
+                return (
+                  <div class="smart-recommend-card">
+                    <div class="rec-header">
+                      <span class="rec-icon">📈</span>
+                      <div class="rec-info">
+                        <span class="rec-title">智能推荐</span>
+                        <span class="rec-subtitle">
+                          基于你的练习数据推荐 · 置信度 {confidencePercent}%
+                        </span>
+                      </div>
+                      <button 
+                        class="modal-button primary rec-apply-btn"
+                        onClick={() => handleSelectDifficulty(recommendation.recommendedLevel)}
+                      >
+                        应用推荐
+                      </button>
+                    </div>
+                    <div class="rec-difficulty-preview">
+                      <span class="rec-diff-icon">{recConfig.icon}</span>
+                      <span class="rec-diff-name">{recConfig.name}</span>
+                      <span class="rec-diff-desc">{recConfig.description}</span>
+                    </div>
+                  </div>
+                );
+              } else {
+                return (
+                  <div class="new-player-guide-card">
+                    <span class="guide-icon">🎓</span>
+                    <div class="guide-info">
+                      <span class="guide-title">新玩家指南</span>
+                      <span class="guide-desc">
+                        建议先到教学与练习中心学习规则，系统会为你推荐合适的难度
+                      </span>
+                    </div>
+                    <button 
+                      class="modal-button secondary guide-btn"
+                      onClick={() => {
+                        setShowDifficultySelect(false);
+                        openTrainingCenter();
+                      }}
+                    >
+                      去学习
+                    </button>
+                  </div>
+                );
+              }
+            })()}
 
             <div class="difficulty-mode-toggle">
               <button 

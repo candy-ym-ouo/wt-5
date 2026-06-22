@@ -142,6 +142,13 @@ import {
 import { processBookFoundForExhibition, getExhibitionIntegrationBonuses } from './touringExhibitionStore';
 import { getUnlockedCharacterBookIds, updateCharacterSideQuestProgress, checkCharacterAchievements, awardCharacterAchievementReward } from './characterStore';
 import { showSettlementCenter } from './settlementStore';
+import {
+  getBooklistProgress,
+  updateBooklistProgress,
+  saveBooklistLeaderboardEntry,
+  setCurrentBooklistId,
+  getAllBooklists,
+} from '../utils/booklistStorage';
 
 const DEFAULT_DIFFICULTY: DifficultyLevel = 'normal';
 const DEFAULT_DIFFICULTY_MODE: DifficultyMode = 'dynamic';
@@ -270,6 +277,11 @@ const initialStore: GameStore = {
   themeCollectionScore: 0,
   themeCollectionStartTime: 0,
   themeCollectionActiveChallengeId: null,
+  currentBooklistId: null,
+  booklistFoundBooks: [],
+  booklistScore: 0,
+  booklistStartTime: 0,
+  booklistConsecutiveCorrect: 0,
 };
 
 export const [gameState, setGameState] = createSignal<GameStore>(initialStore);
@@ -2940,6 +2952,11 @@ export const nextRound = () => {
     return;
   }
   
+  if (state.currentBooklistId) {
+    nextBooklistRound();
+    return;
+  }
+  
   if (state.gameMode === 'chapter') {
     const nextTaskIndex = state.currentTaskIndex + 1;
     const tasks = chapterTasks();
@@ -3965,6 +3982,66 @@ export const selectBookWithRarity = (bookId: string): boolean => {
 
       const tcThemesForBook = getThemesForBook(bookId);
       tcThemesForBook.forEach(t => checkThemeRewards(t.id));
+    } else if (state.currentBooklistId) {
+      const booklistId = state.currentBooklistId;
+      const newBLFoundBooks = [...state.booklistFoundBooks, bookId];
+      const newBLConsecutive = state.booklistConsecutiveCorrect + 1;
+      
+      const totalFound = newBLFoundBooks.length;
+      const totalTimeUsed = (Date.now() - state.booklistStartTime) / 1000;
+      
+      updateBooklistProgress(booklistId, {
+        foundBookIds: newBLFoundBooks,
+        currentBookIndex: totalFound,
+        totalScore: state.booklistScore + totalScore,
+        totalTimeUsed: totalTimeUsed,
+        totalHintsUsed: state.hintsUsed,
+      });
+
+      setGameState(prev => ({
+          ...prev,
+          score: prev.score + totalScore,
+          foundBooks: [...prev.foundBooks, bookId],
+          consecutiveCorrect: prev.consecutiveCorrect + 1,
+          booklistFoundBooks: newBLFoundBooks,
+          booklistScore: prev.booklistScore + totalScore,
+          booklistConsecutiveCorrect: newBLConsecutive,
+          roundStats: newRoundStats,
+          roundDetails: [...prev.roundDetails, roundDetail],
+          currentRoundWrongPicks: [],
+          state: 'won',
+          streak: {
+            ...prev.streak,
+            currentStreak: newStreakCount,
+            bestStreak,
+            bestStreakDate,
+            totalStreakBonusScore: prev.streak.totalStreakBonusScore + streakResult.streakBonus,
+            currentTitleId: newTitleId,
+            streakStartTime: prev.streak.streakStartTime || Date.now(),
+          },
+          lastStreakBonus: streakResult.streakBonus,
+        }));
+
+      if (timerInterval) clearInterval(timerInterval);
+      updatePersonalBest({
+        score: gameState().score,
+        booksFound: gameState().foundBooks.length,
+        findTime,
+        hintsUsed: state.hintsUsed,
+        consecutiveCorrect: gameState().consecutiveCorrect,
+      });
+      resolveRandomEvent();
+      checkAchievements();
+      checkRandomEventAchievements();
+      checkStreakAchievements(newStreakCount);
+      computeGameRating();
+      updateCollectionEntry(book.id, totalScore, findTime, state.hintsUsed);
+      recordBookFound(book.id, totalScore, findTime, state.hintsUsed, state.difficultyLevel);
+      setCollectionCount(getUnlockedCollectionCount());
+      triggerQuestProgressOnBookFound(book, findTime, state);
+
+      const blThemesForBook = getThemesForBook(bookId);
+      blThemesForBook.forEach(t => checkThemeRewards(t.id));
     } else {
       setGameState(prev => ({
           ...prev,
@@ -5535,5 +5612,233 @@ const checkThemeCollectionChallenges = (
       processBookFound(null as any, challenge.rewardCoins);
     }
   }
+};
+
+export const isBooklistMode = (): boolean => {
+  return gameState().currentBooklistId !== null;
+};
+
+export const getBooklistInfo = () => {
+  const state = gameState();
+  if (!state.currentBooklistId) return null;
+  
+  const allBooklists = getAllBooklists();
+  const booklist = allBooklists.find(b => b.id === state.currentBooklistId);
+  
+  if (!booklist) return null;
+  
+  const foundCount = state.booklistFoundBooks.length;
+  const totalBooks = booklist.bookIds.length;
+  const percent = totalBooks > 0 ? (foundCount / totalBooks) * 100 : 0;
+  
+  return {
+    booklist,
+    progress: foundCount,
+    total: totalBooks,
+    target: booklist.targetBooks,
+    percent,
+    score: state.booklistScore,
+    startTime: state.booklistStartTime,
+    consecutiveCorrect: state.booklistConsecutiveCorrect,
+  };
+};
+
+export const startBooklistGame = (booklistId: string) => {
+  const allBooklists = getAllBooklists();
+  const booklist = allBooklists.find(b => b.id === booklistId);
+  
+  if (!booklist) return;
+  
+  const progress = getBooklistProgress(booklistId);
+  const foundBookIds = progress?.foundBookIds || [];
+  
+  const remainingBookIds = booklist.bookIds.filter(id => !foundBookIds.includes(id));
+  
+  if (remainingBookIds.length === 0) return;
+  
+  const firstBookId = remainingBookIds[0];
+  const firstBook = BOOKS.find(b => b.id === firstBookId);
+  if (!firstBook) return;
+  
+  const defaultConfig = getDifficultyConfig(DEFAULT_DIFFICULTY);
+  const bonusTime = getTimeBonus();
+  const bonusHints = getHintBonus();
+  const now = Date.now();
+  
+  setCurrentBooklistId(booklistId);
+  setFoundGenres([]);
+  setupRound(firstBook);
+  
+  const newGamesPlayed = incrementGamesPlayed();
+  setGamesPlayed(newGamesPlayed);
+  
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    score: 0,
+    timeRemaining: defaultConfig.gameTime + bonusTime,
+    hintsRemaining: defaultConfig.initialHints + bonusHints,
+    hintsUsed: 0,
+    currentLevel: 1,
+    targetBookId: firstBook.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    foundBooks: [],
+    consecutiveCorrect: 0,
+    gameMode: 'booklist' as any,
+    currentChapterId: null,
+    currentTaskIndex: 0,
+    chapterScore: 0,
+    chapterTimeUsed: 0,
+    chapterHintsUsed: 0,
+    difficultyLevel: DEFAULT_DIFFICULTY,
+    difficultyMode: 'fixed',
+    difficultyHistory: [DEFAULT_DIFFICULTY],
+    roundStats: {
+      findTimes: [],
+      hintsUsedPerRound: [],
+    },
+    difficultyAdjustmentReason: null,
+    showDifficultyChange: false,
+    lastTimeBonus: 0,
+    powerUps: createInitialPowerUpState(DEFAULT_DIFFICULTY),
+    currentThemeId: null,
+    themeFoundBooks: [],
+    themeScore: 0,
+    currentThemeCollectionId: null,
+    themeCollectionFoundBooks: [],
+    themeCollectionScore: 0,
+    themeCollectionStartTime: 0,
+    themeCollectionActiveChallengeId: null,
+    currentBooklistId: booklistId,
+    booklistFoundBooks: foundBookIds,
+    booklistScore: progress?.bestScore || 0,
+    booklistStartTime: now,
+    booklistConsecutiveCorrect: 0,
+  }));
+  
+  setGameStartTime(now);
+  startTimer();
+  
+  setTimeout(() => {
+    triggerRandomEvent();
+  }, 1000);
+};
+
+export const nextBooklistRound = () => {
+  const state = gameState();
+  if (!state.currentBooklistId) return;
+  
+  const allBooklists = getAllBooklists();
+  const booklist = allBooklists.find(b => b.id === state.currentBooklistId);
+  
+  if (!booklist) return;
+  
+  const foundBookIds = state.booklistFoundBooks;
+  const remainingBookIds = booklist.bookIds.filter(id => !foundBookIds.includes(id));
+  
+  if (remainingBookIds.length === 0) {
+    finishBooklistGame();
+    return;
+  }
+  
+  const nextBookId = remainingBookIds[0];
+  const nextBook = BOOKS.find(b => b.id === nextBookId);
+  if (!nextBook) {
+    finishBooklistGame();
+    return;
+  }
+  
+  const config = getDifficultyConfig(state.difficultyLevel);
+  const storeTimeBonus = getTimeBonus();
+  const storeHintBonus = getHintBonus();
+  
+  setupRound(nextBook);
+  
+  setGameState(prev => ({
+    ...prev,
+    state: 'playing',
+    currentLevel: prev.booklistFoundBooks.length + 1,
+    targetBookId: nextBook.id,
+    unlockedClues: [currentClues()[0]?.id || ''],
+    hintsRemaining: Math.min(prev.hintsRemaining + 1 + storeHintBonus, config.initialHints + storeHintBonus),
+    hintsUsed: 0,
+    showDifficultyChange: false,
+    timeRemaining: prev.timeRemaining + storeTimeBonus,
+    powerUps: {
+      ...prev.powerUps,
+      peekActive: false,
+      peekEndTime: 0,
+      eliminatedBookIds: [],
+      powerUpsUsedThisRound: {
+        freeHints: 0,
+        timePeeks: 0,
+        eliminateWrongs: 0,
+      },
+    },
+  }));
+  
+  startTimer();
+  
+  setTimeout(() => {
+    triggerRandomEvent();
+  }, 1000);
+};
+
+const finishBooklistGame = () => {
+  const state = gameState();
+  if (!state.currentBooklistId) return;
+  
+  const booklistId = state.currentBooklistId;
+  const progress = getBooklistProgress(booklistId);
+  const totalTimeUsed = (Date.now() - state.booklistStartTime) / 1000;
+  const finalScore = state.booklistScore;
+  
+  updateBooklistProgress(booklistId, {
+    totalScore: finalScore,
+    totalTimeUsed: totalTimeUsed,
+    totalHintsUsed: state.hintsUsed,
+    completions: (progress?.completions || 0) + 1,
+    completedAt: Date.now(),
+  });
+  
+  if (finalScore > (progress?.bestScore || 0)) {
+    updateBooklistProgress(booklistId, {
+      bestScore: finalScore,
+      bestScoreDate: Date.now(),
+    });
+  }
+  
+  if (totalTimeUsed > 0 && (totalTimeUsed < (progress?.fastestCompletion || Infinity) || !progress?.fastestCompletion)) {
+    updateBooklistProgress(booklistId, {
+      fastestCompletion: totalTimeUsed,
+      fastestCompletionDate: Date.now(),
+    });
+  }
+  
+  setGameState(prev => ({
+    ...prev,
+    state: 'won',
+  }));
+  
+  if (timerInterval) clearInterval(timerInterval);
+};
+
+export const submitBooklistLeaderboardScore = (playerName: string) => {
+  const state = gameState();
+  if (!state.currentBooklistId) return false;
+  
+  const entry = {
+    id: Date.now().toString(),
+    playerName: playerName.trim(),
+    booklistId: state.currentBooklistId,
+    score: state.booklistScore,
+    timeUsed: (Date.now() - state.booklistStartTime) / 1000,
+    hintsUsed: state.hintsUsed,
+    booksFound: state.booklistFoundBooks.length,
+    date: Date.now(),
+  };
+  
+  saveBooklistLeaderboardEntry(state.currentBooklistId, entry);
+  return true;
 };
 

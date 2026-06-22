@@ -21,7 +21,8 @@ import ThemeCollectionCenter from './components/ThemeCollectionCenter';
 import SettlementCenter from './components/SettlementCenter';
 import TouringExhibitionCenter from './components/TouringExhibitionCenter';
 import TrainingCenter from './components/TrainingCenter';
-import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo, isThemeCollectionMode, getThemeCollectionInfo } from './store/gameStore';
+import BooklistEditor from './components/BooklistEditor';
+import { gameState, showAchievementPopup, showThemeRewardPopup, getCurrentChapter, chapterTasks, getDifficultyInfo, dismissDifficultyChange, getCurrentThemeInfo, targetBook, getStreakInfo, pauseGame, getDailyChallengeInfo, isDailyChallengeMode, getRushInfo, isRushMode, collectionCount, isCommissionMode, getCommissionInfo, isThemeCollectionMode, getThemeCollectionInfo, startGame, isBooklistMode, getBooklistInfo, startBooklistGame } from './store/gameStore';
 import { openTrainingCenter, getTrainingCenterState, closeTrainingCenter } from './store/trainingStore';
 import { showStoreManager, showRewardPopup, showTaskCompletePopup, openStoreManager, closeStoreManager, getCoins, getStoreLevel } from './store/storeManager';
 import { showDecorationManager, openDecorationManager, closeDecorationManager, showDecorationNotification } from './store/decorationStore';
@@ -33,6 +34,7 @@ import { openWorkshop, closeWorkshop, getWorkshopStateInfo, showWorkshop } from 
 import { openQuestPanel, closeQuestPanel, getQuestPanelInfo, getUnclaimedQuestCount, dismissQuestPopup } from './store/questStore';
 import { openCharacterPanel, closeCharacterPanel, getCharacterPanelInfo, characterState, dismissRelationshipPopup, dismissBooklistUnlockPopup, dismissAchievementUnlockPopup, dismissQuestUnlockPopup } from './store/characterStore';
 import { openExhibitionCenter, closeExhibitionCenter, exhibitionState, exhibitionRewardPopup, dismissExhibitionRewardPopup, getExhibitionInfo } from './store/touringExhibitionStore';
+import { openBooklistCenter, getBooklistCenterState, closeBooklistCenter } from './store/booklistStore';
 import { RELATIONSHIP_THRESHOLDS, RELATIONSHIP_LEVEL_ICONS } from './types/character';
 import QuestPanel from './components/QuestPanel';
 import CharacterPanel from './components/CharacterPanel';
@@ -69,6 +71,8 @@ export default function App() {
   const commInfo = createMemo(() => getCommissionInfo());
   const isTCMode = createMemo(() => isThemeCollectionMode());
   const tcInfo = createMemo(() => getThemeCollectionInfo());
+  const isBLMode = createMemo(() => isBooklistMode());
+  const blInfo = createMemo(() => getBooklistInfo());
   const coins = createMemo(() => getCoins());
   const storeLevel = createMemo(() => getStoreLevel());
   const codexInfo = createMemo(() => getCodexStateInfo());
@@ -81,6 +85,8 @@ export default function App() {
   const exhibitionInfo = createMemo(() => getExhibitionInfo());
   const [showCalendar, setShowCalendar] = createSignal(false);
   const [showQuests, setShowQuests] = createSignal(false);
+  const [showBooklist, setShowBooklist] = createSignal(false);
+  const booklistState = createMemo(() => getBooklistCenterState());
 
   return (
     <div class="game-container">
@@ -110,6 +116,11 @@ export default function App() {
           {isTCMode() && tcInfo() && (
             <span class="tc-header-badge" style={{ 'border-color': tcInfo()!.collection.color }}>
               {tcInfo()!.collection.icon} {tcInfo()!.collection.title} {tcInfo()!.progress}/{tcInfo()!.required}
+            </span>
+          )}
+          {isBLMode() && blInfo() && (
+            <span class="bl-header-badge" style={{ 'border-color': blInfo()!.booklist.color }}>
+              {blInfo()!.booklist.icon} {blInfo()!.booklist.name} {blInfo()!.progress}/{blInfo()!.total}
             </span>
           )}
           {isCommMode() && commInfo().activeCommission && (
@@ -234,6 +245,17 @@ export default function App() {
           >
             <div class="stat-label">📚 主题</div>
             <div class="stat-value small-stat-value">馆藏</div>
+          </button>
+          <button 
+            class="stat-item booklist-button"
+            onClick={() => {
+              openBooklistCenter();
+              setShowBooklist(true);
+            }}
+            title="书单挑战"
+          >
+            <div class="stat-label">📑 书单</div>
+            <div class="stat-value small-stat-value">挑战</div>
           </button>
           <button 
             class="stat-item calendar-button"
@@ -467,6 +489,49 @@ export default function App() {
                 {rushInfo()?.perfectRun && (
                   <div class="rush-perfect-badge">
                     ⭐ 完美通关！
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {isBLMode() && blInfo() && (
+            <div class="sidebar-section bl-section">
+              <div class="section-title">
+                <span>{blInfo()!.booklist.icon}</span>
+                <span>书单挑战进度</span>
+              </div>
+              <div class="bl-progress-card" style={{ '--bl-color': blInfo()!.booklist.color }}>
+                <div class="bl-card-title">{blInfo()!.booklist.name}</div>
+                <div class="bl-progress-bar">
+                  <div 
+                    class="bl-progress-fill"
+                    style={{ width: `${blInfo()?.percent}%` }}
+                  />
+                </div>
+                <div class="bl-progress-info">
+                  <span class="bl-progress-text">
+                    {blInfo()?.progress} / {blInfo()?.total} 本书籍
+                  </span>
+                  <span class="bl-progress-score">
+                    得分: {blInfo()?.score}
+                  </span>
+                </div>
+                {currentBook() && (
+                  <div class="bl-book-rarity">
+                    <span class="rarity-label">目标稀有度:</span>
+                    <span 
+                      class="rarity-value"
+                      style={{ color: RARITY_CONFIG[currentBook()!.rarity].color }}
+                    >
+                      {RARITY_CONFIG[currentBook()!.rarity].icon} {RARITY_CONFIG[currentBook()!.rarity].name}
+                      (x{RARITY_CONFIG[currentBook()!.rarity].scoreMultiplier})
+                    </span>
+                  </div>
+                )}
+                {blInfo()?.consecutiveCorrect && blInfo()!.consecutiveCorrect >= 3 && (
+                  <div class="bl-streak-badge">
+                    🔥 连对 {blInfo()!.consecutiveCorrect} 本
                   </div>
                 )}
               </div>
@@ -771,7 +836,27 @@ export default function App() {
       )}
 
       {getTrainingCenterState().isVisible && (
-        <TrainingCenter onClose={closeTrainingCenter} />
+        <TrainingCenter 
+          onClose={closeTrainingCenter} 
+          onStartGame={(difficulty) => {
+            closeTrainingCenter();
+            startGame(difficulty, 'dynamic');
+          }}
+        />
+      )}
+
+      {showBooklist() && booklistState().isVisible && (
+        <BooklistEditor 
+          onClose={() => {
+            closeBooklistCenter();
+            setShowBooklist(false);
+          }}
+          onStartChallenge={(booklistId) => {
+            closeBooklistCenter();
+            setShowBooklist(false);
+            startBooklistGame(booklistId);
+          }}
+        />
       )}
     </div>
   );

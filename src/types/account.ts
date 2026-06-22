@@ -219,6 +219,7 @@ export const DEFAULT_PLAYER_STATS: PlayerStats = {
     chapter: { gamesPlayed: 0, booksFound: 0, highestScore: 0, averageScore: 0, completed: 0 },
     daily: { gamesPlayed: 0, booksFound: 0, highestScore: 0, averageScore: 0, completed: 0 },
     rush: { gamesPlayed: 0, booksFound: 0, highestScore: 0, averageScore: 0, completed: 0 },
+    booklist: { gamesPlayed: 0, booksFound: 0, highestScore: 0, averageScore: 0, completed: 0 },
   },
 };
 

@@ -205,7 +205,7 @@ export interface DifficultyAdjustmentResult {
   changed: boolean;
 }
 
-export type GameMode = 'classic' | 'chapter' | 'daily' | 'rush';
+export type GameMode = 'classic' | 'chapter' | 'daily' | 'rush' | 'booklist';
 
 export type RushStageStatus = 'pending' | 'current' | 'completed' | 'failed';
 
@@ -494,6 +494,11 @@ export interface GameStore {
   themeCollectionScore: number;
   themeCollectionStartTime: number;
   themeCollectionActiveChallengeId: string | null;
+  currentBooklistId: string | null;
+  booklistFoundBooks: string[];
+  booklistScore: number;
+  booklistStartTime: number;
+  booklistConsecutiveCorrect: number;
 }
 
 export interface DailyChallengeBook {

@@ -2,8 +2,13 @@ import { createMemo, For } from 'solid-js';
 import { generateDifficultyRecommendation, getTrainingStats, getSkillLevels } from '../../store/trainingStore';
 import { DIFFICULTY_CONFIGS, DIFFICULTY_LEVELS } from '../../data/difficulty';
 import { CLUE_SKILL_NAMES } from '../../types/training';
+import type { DifficultyLevel } from '../../types/game';
 
-export default function DifficultyRecommend() {
+interface DifficultyRecommendProps {
+  onStartGame?: (difficulty: DifficultyLevel) => void;
+}
+
+export default function DifficultyRecommend(props: DifficultyRecommendProps) {
   const recommendation = createMemo(() => generateDifficultyRecommendation());
   const stats = createMemo(() => getTrainingStats());
   const skills = createMemo(() => getSkillLevels());
@@ -71,6 +76,17 @@ export default function DifficultyRecommend() {
             </For>
           </ul>
         </div>
+
+        {props.onStartGame && (
+          <div class="recommend-start-btn">
+            <button 
+              class="modal-button primary large"
+              onClick={() => props.onStartGame?.(recommendation().recommendedLevel)}
+            >
+              🎮 以{currentConfig().name}开始游戏
+            </button>
+          </div>
+        )}
       </div>
 
       <div class="difficulty-overview">
